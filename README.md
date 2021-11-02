@@ -47,3 +47,45 @@ DESCRIPTION: CEO purchase from 2011 ownchange>5%
  Located at:data/CEO2011to2021.csv
 -------------------------------------------------
 ```
+
+
+To Use it:
+1:
+install dependencies:
+```
+pip3 install yfinance
+pip3 install pandas
+pip3 install requests
+(and any other that pops up, it will tell you
+```
+2: Go to open insider.com and select the filters you want, set the Max results to 1000 and press search
+   Verify the data that the website give you, if it looks good, copy the url
+
+
+3: run program
+```
+python3 main.py
+```
+4: FOLLOW DIRECTIONS. 
+
+
+Currently theres a base set of data avalaible and 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
