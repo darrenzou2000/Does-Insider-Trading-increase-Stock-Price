@@ -29,7 +29,8 @@ class Scrapper():
             return
         #insider data contains all the major fields, this will be converted into dataframe and eventurally csv
         #takes the html data of requests and puts it into insider data
-        insiderData = self.turnDataintodict(url)
+        insiderData = {'Filing_Date':[], 'Trade_Date':[], 'Ticker':[], 'Company_Name':[], 'Insider_Name':[], 'Title':[], 'Trade_Type':[], 'Price':[], 'Qty':[], 'Owned':[], 'ΔOwn':[], 'Value':[]}
+        insiderData = self.turnDataintodict(insiderData,url)
         #takes the dict and turn it into data frame
         self.data= pd.DataFrame(data = insiderData)
         #keeps track of original size 
@@ -49,8 +50,7 @@ class Scrapper():
 
     #params:
     #  url: Url of open insider website
-    def turnDataintodict(self,url) ->dict:
-        insiderData = {'Filing_Date':[], 'Trade_Date':[], 'Ticker':[], 'Company_Name':[], 'Insider_Name':[], 'Title':[], 'Trade_Type':[], 'Price':[], 'Qty':[], 'Owned':[], 'ΔOwn':[], 'Value':[]}
+    def turnDataintodict(self,insiderData,url) ->dict:
         result = requests.get(url)
         src = result.content
         soup = BeautifulSoup(src,"lxml")
@@ -87,12 +87,13 @@ class Scrapper():
         if(len(rows)==1000):
             #pagenumber is found at the end of the url
             page = int(url[-2:].replace("=","")) 
-            #99 is the page limit
-            if(page<100):
-                url = url.split("page=")[0] + "page=" + str(page+1)
-                print("currently scanning page:",page, "entries gotten so far:",(page)*1000)
-                #recursion until all the 
-                insiderData = self.turnDataintodict(insiderData,url)
+            #9 is the page limit or 9000 entries
+            if(page>=10):
+                return insiderData
+            url = url.split("page=")[0] + "page=" + str(page+1)
+            print("currently scanning page:",page, "entries gotten so far:",(page)*1000)
+            #recursion until all the pages are done
+            insiderData = self.turnDataintodict(insiderData,url)
         return insiderData
 
     def __repr__(self):

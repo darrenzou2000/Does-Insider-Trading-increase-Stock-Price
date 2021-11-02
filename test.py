@@ -29,7 +29,8 @@ def cleanup(df):
         return df
 
 
-
+for i in range(3):
+    print(i)
 
 def getinsider(df,file):
     df = read_csv(file)
