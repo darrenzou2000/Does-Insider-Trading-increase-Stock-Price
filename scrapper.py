@@ -22,32 +22,35 @@ class Scrapper():
         self.csvFilePath = csvFilePath
         self.description = description
         #if the site is scrapped already, no need to waste time doing it again
-        if(self.alreadyscrapped()):
+        if(self.alreadyscrapped(description)):
             self.data = pd.read_csv(csvFilePath)
-            self.originalSize = len(self.data)
             getter = DataGetter()
             getter.update(self)
             return
         #insider data contains all the major fields, this will be converted into dataframe and eventurally csv
-        insiderData = {'Filing_Date':[], 'Trade_Date':[], 'Ticker':[], 'Company_Name':[], 'Insider_Name':[], 'Title':[], 'Trade_Type':[], 'Price':[], 'Qty':[], 'Owned':[], 'ΔOwn':[], 'Value':[]}
         #takes the html data of requests and puts it into insider data
-        insiderData = self.turnDataintodict(insiderData,url)
+        insiderData = self.turnDataintodict(url)
+        #takes the dict and turn it into data frame
         self.data= pd.DataFrame(data = insiderData)
+        #keeps track of original size 
         self.originalSize = len(self.data)
         #this is added so stocks after the time period can be filled in.
         self.data[['2w', '1m', '4m', '6m', '1yr', '2yr']]= 0.0
         #this is change in % since brought
         self.data[['2w%', '1m%', '4m%', '6m%', '1yr%', '2yr%', 'done']] = 0.0
+        #done is a variable used to check if the 2w,1m... data has been filled in, in case the program was stopped half way
         self.data["done"]=False
-        #remove trades that happens on the same day same time
-        self.data = self.data.drop_duplicates(['Ticker','Trade_Date'],keep= 'last')
-        self.data.to_csv(csvFilePath)   
+        self.data.to_csv(csvFilePath) 
+        #adding the data to scrapped so that it will show up in the main menu  
         self.addToScrapped()
-        
-        #after scrapping data, fill in the stock price after time Frame
+        #after scrapping data, fill in the stock price after timeframe(2m,1m,4m ...etc)
         getter = DataGetter()
         getter.update(self)
-    def turnDataintodict(self,insiderData,url) ->dict:
+
+    #params:
+    #  url: Url of open insider website
+    def turnDataintodict(self,url) ->dict:
+        insiderData = {'Filing_Date':[], 'Trade_Date':[], 'Ticker':[], 'Company_Name':[], 'Insider_Name':[], 'Title':[], 'Trade_Type':[], 'Price':[], 'Qty':[], 'Owned':[], 'ΔOwn':[], 'Value':[]}
         result = requests.get(url)
         src = result.content
         soup = BeautifulSoup(src,"lxml")
@@ -96,17 +99,19 @@ class Scrapper():
         return "-------------------------------------------------------\nDESCRIPTION: "+ self.description+ "\n found: "+ str(len(self.data))+ " entries"+"\n Located at:"+self.csvFilePath+"\n-------------------------------------------------"
     def get_data(self)->pd.DataFrame:
         return self.data
-    #this is so that running the code multiple times with the same url wont take so long.
-    def alreadyscrapped(self)->bool:
+
+    #Make sure the same data isnt scrapped again, which takes a while
+    def alreadyscrapped(self,description)->bool:
         f = open("alreadyscrapped.json")
         scrapped = json.load(f)["Scrapped"]
         f.close()
         for entry in scrapped:
-            if self.description == entry["description"]:
+            if description == entry["description"]:
+                self.originalSize = entry["count"]
                 return True
         return False
 
-    #stripes unnessary symbols  
+    #stripes unnessary symbols, data like "$100.0" isnt a float because of the "$"
     def toFloat(self,input):
         if input == "New":
             return "New"
@@ -114,9 +119,13 @@ class Scrapper():
         for i in removelist:
             input = input.replace(i,"")
         return float(input)
+
+
+    #helper function so I dont have to type scrapper.data.to_csv(...) everytime
     def to_csv(self):
         self.data.to_csv(self.csvFilePath,index=False)
 
+    #Once a url is scrapped, add it to the json file so its not scrapped again
     def addToScrapped(self)->None:
         f = open("alreadyscrapped.json")
         scrapped = json.load(f)
@@ -128,6 +137,8 @@ class Scrapper():
 
 
     #sometimes the data in a table is enwrapped in a div or h3 or a tag or multiple layers, this function will traverse through it all to get the data
+    #example: for the Company ticker, it is enwrapped in:   <div>  <b> <a> ACUTAL TICKER <a> <b> <div>
+    # So I would type:  self.getchildData(tickerElement,"div b a")
     def getchildData(self,data,path)->str:
         path = path.split(" ")   
         childNode = None

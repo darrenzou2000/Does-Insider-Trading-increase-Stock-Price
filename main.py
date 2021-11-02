@@ -46,7 +46,7 @@ class App():
                 return
             url = input("enter Url: ")
             desc = input("Enter the description for this: example: CEO purchase last 4 years with own change >5%\n  ")
-            filename = input("enter file name,  example: CEOPurchaseOnly\n  ")
+            filename = input("enter file name,  example: CEOPurchaseOnly\n  ").replace(" ","_")
             filePath = self.createFile(filename)
         return Scrapper(url,filePath,desc)
 
@@ -60,6 +60,7 @@ class App():
             while(filename in dir_list):
                 print("filename", filename, "taken")
                 filename = input("enter a new one: ")
+        
         with open(f'data/{filename}.csv', 'w') as fp:
             pass
         print(f"file created: {filename}.csv")
