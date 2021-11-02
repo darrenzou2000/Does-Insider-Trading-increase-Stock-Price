@@ -86,7 +86,7 @@ if __name__ == "__main__":
     a = App()
     backupurl = ["http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=-1&tdr=01%2F01%2F2011+-+07%2F13%2F2021&fdlyl=&fdlyh=&daysago=&xp=1&vl=&vh=&ocl=4&och=&sic1=-1&sicl=100&sich=9999&iscfo=1&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=1000&page=1","http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=-1&tdr=01%2F01%2F2011+-+07%2F13%2F2021&fdlyl=&fdlyh=&daysago=&xp=1&vl=&vh=&ocl=4&och=&sic1=-1&sicl=100&sich=9999&iscoo=1&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=1000&page=1","http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=-1&tdr=01%2F01%2F2011+-+07%2F13%2F2021&fdlyl=&fdlyh=&daysago=&xp=1&vl=&vh=&ocl=20&och=&sic1=-1&sicl=100&sich=9999&isdirector=1&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=1000&page=1"]
     backupDESC = ["CFO Buys 2011 to 2021 own change >4%","COO Buys 2011 to 2021 own change >4%","Director buys 2011 to 2011 OC>20%"]
-    backupFileName = ["CFO Buys 2011 to 2021 own change >4%","COO Buys 2011 to 2021 own change >4%","Director buys 2011 to 2011 OC>20%"]
+    backupFileName = ["CFO Buys 2011 to 2021","COO Buys 2011 to 2021 ","Director buys 2011 to 2011"]
     for i in range(3):
         a.createFile(backupFileName[i])
         Scrapper(backupurl[i],backupFileName[i],backupDESC[i])
