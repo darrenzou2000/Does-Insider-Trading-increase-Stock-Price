@@ -1,3 +1,7 @@
+Project dev: Darren Zou 
+Started at 10/18/2021
+
+
 First of all watch this video, it tells you everything:
 (video link for when I acutally does it)
 
@@ -10,7 +14,7 @@ I scrape data from OpenInsider.com and using Yahoo Finance, find the results of 
 Technologies used:
 Language: Python 3.8
 Beautiful soup (for webscrapping)
-Pandas Dataframe (for storing data)
+Pandas Dataframe (for everything)
 
 Results:
 I scrapped over 10k entries and find that in most cases, the insider made a return! 
