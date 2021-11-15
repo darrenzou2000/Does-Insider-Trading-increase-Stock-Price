@@ -172,8 +172,8 @@ class Scrapper():
             Owned =self.toFloat(column[10].get_text()) 
             insiderData['Owned'].append(Owned)
 
-            ΔOwn =self.toFloat(column[11].get_text())
-            insiderData['ΔOwn'].append(ΔOwn)
+            ownChange =self.toFloat(column[11].get_text())
+            insiderData['ΔOwn'].append(ownChange)
 
             Value = self.toFloat(column[12].get_text())
             insiderData['Value'].append(Value)

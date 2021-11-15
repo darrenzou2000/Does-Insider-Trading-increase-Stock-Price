@@ -15,6 +15,7 @@ Technologies used:
 Language: Python 3.8
 Beautiful soup (for webscrapping)
 Pandas Dataframe (for everything)
+API with Alpaca and Yahoo finance
 
 Results:
 I scrapped over 10k entries and find that in most cases, the insider made a return! 
@@ -54,26 +55,23 @@ DESCRIPTION: CEO purchase from 2011 ownchange>5%
 
 
 To Use it:
-1:
-install dependencies:
+1:Install dependencies
 ```
-pip3 install yfinance
-pip3 install pandas
-pip3 install requests
-(and any other that pops up, it will tell you
+pip3 install -r requirements.txt
 ```
-2: Go to open insider.com and select the filters you want, set the Max results to 1000 and press search
+
+2: Go to openinsider.com and select the filters you want, set the Max results to 1000 and press search
    Verify the data that the website give you, if it looks good, copy the url
 
 
 3: run program
+
 ```
 python3 main.py
 ```
-4: FOLLOW DIRECTIONS. 
 
+4: FOLLOW DIRECTIONS. The output should be in the data folder
 
-Currently theres a base set of data avalaible and 
 
 
 
