@@ -2,35 +2,88 @@ from numpy import NaN
 import pandas as pd
 from pandas.io.parsers import read_csv
 from requests.api import get
-from DataGetter import DataGetter
-from scrapper import Scrapper
 import  yfinance as yf 
 import alpaca_trade_api as tradeapi
+from yfinance.utils import auto_adjust
 from result import Result
+import os
+import datetime
+from urllib.parse import urlparse, parse_qs
+import pandas_datareader as pdr
+
 def undone():
     filePath = "data/VP50%last4year.csv"
     df = pd.read_csv(filePath)
     df["done"]=False
     df.to_csv(filePath,index=False)
     print(df)
-def checkdata(ticker,date):
+
+
+def checkdatayf(date,ticker):
+    print("this is for YF")
     company = yf.Ticker(ticker) 
-    hist = company.history(period="4y",interval="1wk",start = date)  
+    hist = company.history(period="4y",interval="1wk",start = date,back_adjust=True)  
     print(hist)
     return hist
 
+def checkdataAlpaca(trade_Date,ticker):
+    print("this is for alpaca")
+    key = getApiKey()
+    alpaca_api = tradeapi.REST(key["PUBLIC_KEY"],key["SECRET_KEY"],key["END_POINT"])
+    twoweeksago=(datetime.date.today()-datetime.timedelta(days=14)).strftime('%Y-%m-%d') 
+    barset = alpaca_api.get_bars([ticker], "5Day", start =trade_Date, end= twoweeksago, adjustment="all",limit=53)
+    print(barset.df)
+    return barset
+def checkdata(trade_Date,ticker):
+    checkdatayf(trade_Date,ticker)
+    checkdataAlpaca(trade_Date,ticker)
+def getApiKey():
+        key_file = "key/alpaca_keys.txt"
+        with open(key_file,"r") as f:
+                line= f.read().strip().split(" ")
+                API_KEY,SECRET_KEY,END_POINT=line 
+        return {"PUBLIC_KEY":API_KEY,"SECRET_KEY":SECRET_KEY,"END_POINT":END_POINT}
+
+def checkcompanyinAlpaca(companyName):
+    key = getApiKey()
+    alpaca_api = tradeapi.REST(key["PUBLIC_KEY"],key["SECRET_KEY"],key["END_POINT"])
+    assets = alpaca_api.list_assets()
+    specificCompany = [x for x in assets if x.name == companyName]
+    print(specificCompany)
+
+def checksymbolinAlpaca(symbol):
+    key = getApiKey()
+    alpaca_api = tradeapi.REST(key["PUBLIC_KEY"],key["SECRET_KEY"],key["END_POINT"])
+    assets = alpaca_api.list_assets()
+    specificCompany = [x for x in assets if x.symbol == symbol]
+    print(specificCompany)
+
+def dropcolumn(path,col):
+    df=read_csv(path)
+    del df[col]
+    df.to_csv(path,index=False)
 
 def cleanup(df):
         #drop those without price or no 2week data
-        df=df.dropna(axis=0,subset=["Price"])
+        df=df.dropna(axis=0,subset=["Ticker"])
         df = df[df["Price"]!=0]
         df = df.loc[df["2w"]!=0]
         print("----------------------------------------------------------------------------------------")
         return df
+def getApiKey():
+        try:
+            key_file = "key/alpaca_keys.txt"
+            with open(key_file,"r") as f:
+                    line= f.read().strip().split(" ")
+                    API_KEY,SECRET_KEY,END_POINT=line 
+            return {"PUBLIC_KEY":API_KEY,"SECRET_KEY":SECRET_KEY,"END_POINT":END_POINT}
+        except:
+            return {}
+def isgrouped(url)->bool:
+        o = urlparse(url)
+        query = parse_qs(o.query)
+        return query["grp"][0]=="2"
 
-
-for i in range(3):
-    print(i)
 
 def getinsider(df,file):
     df = read_csv(file)
@@ -48,37 +101,52 @@ def getinsider(df,file):
         bestreturn = onecompany[onecompany["Ticker"]==ticker].iloc[0]["4m%"]
         print(f"for Ticker {ticker},number of insider is {num}, the best return after 4m is: {bestreturn}%")
         returns.append(bestreturn)
+import warnings
+# warnings.filterwarnings("ignore")
 
+import threading
+def getsomedata():
+    tickers = ['TSLA',"msft","AAPL","OME","FB","PLTR","LCID"]
+    df = pdr.yahoo.daily.YahooDailyReader(tickers, start='2017-01-01', end='2021-09-28',interval="w",adjust_price=True).read()
+    df.index = pd.to_datetime(df.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
+    print(df)
+    for i in tickers:
+        indivisualdf = df[("Open",i)].dropna()
+        if(indivisualdf.empty):
+            continue
+        # print(indivisualdf.index.values[0], indivisualdf.iloc[0])
+    print("DONE!")
 
+def getsomedata2():
+    tickers =['AAPL',"MSFT","FB","TSLA","OSN","GOOG"]
+    df = pdr.yahoo.daily.YahooDailyReader(tickers, start='2017-01-01', end='2021-09-28',interval="w",adjust_price=True).read()
+    df.index = pd.to_datetime(df.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
+    print(df)
+    for i in tickers:
+        indivisualdf = df[("Open",i)].dropna()
+        if(indivisualdf.empty):
+            print("data not found")
+            continue
+        # print(indivisualdf.index.values[0], indivisualdf.iloc[0])
+    print("DONE! with r2")
 
-# r = Result()
-# r.getPositive(ticker)
-# r.getAVG(df)
-# print(df)
-# print(round(12.76523,2))
+import time
 
-# step = {"Price":0,"2w":2,"1m":4,"4m":16,"6m":24,"1yr":48,"2yr":96}
+class a:
+    value = 10
+    def __init__(self) -> None:
+        pass   
 
+    def count(self):
+        while True:
+            print(self.value)
+            time.sleep(1)
+    def startthread(self):
+        t1 = threading.Thread(target=self.count)
+        t1.start()
 
-# getter = DataGetter()
-
-# getter = DataGetter()
-# keys = getter.getApiKeys()
-# api = tradeapi.REST(keys[0]["apikey"],keys[0]["secretkey"],keys[0]["endpoint"])
-# barset = api.get_barset('OCN', '1D', limit=507,after="{}T09:30:00-04:00".format("2020-08-01"))["OCN"]
-# print(barset)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+a = a()
+a.startthread()
+time.sleep(2)
+a.value = 2
+print("value is updated to 2!")
