@@ -79,8 +79,8 @@ class Scrapper():
             insiderData['Qty'].append(Qty)
             Owned =self.toFloat(column[10].get_text()) 
             insiderData['Owned'].append(Owned)
-            ΔOwn =self.toFloat(column[11].get_text())
-            insiderData['ΔOwn'].append(ΔOwn)
+            OwnChange =self.toFloat(column[11].get_text())
+            insiderData['ΔOwn'].append(OwnChange)
             Value = self.toFloat(column[12].get_text())
             insiderData['Value'].append(Value)
         #if the number if rows is 1000, then there might be more data on the next page, so we go to the next page
