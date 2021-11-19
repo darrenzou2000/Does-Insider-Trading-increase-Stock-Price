@@ -145,8 +145,4 @@ class a:
         t1 = threading.Thread(target=self.count)
         t1.start()
 
-a = a()
-a.startthread()
-time.sleep(2)
-a.value = 2
-print("value is updated to 2!")
+checksymbolinAlpaca("CCNEP")

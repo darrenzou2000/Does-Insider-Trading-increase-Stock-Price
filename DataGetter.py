@@ -9,6 +9,7 @@ import scrapper as Scrapper
 import time
 import warnings
 import threading
+import re
 warnings.filterwarnings("ignore")
 class DataGetter():
     def __init__(self) -> None:
@@ -20,6 +21,7 @@ class DataGetter():
         self.Threads = []
         self.yfLimitHit = False
         self.count =0
+        self.regex = re.compile('[^a-z]')
         return
 
     def update(self,scrapper):
@@ -27,8 +29,10 @@ class DataGetter():
         self.data = scrapper.get_data()
         dfSize = len(self.data)
         self.getCorrectStockTicker()
+        #save the correct sticker progress
+        self.to_csv()
         rowGroup = []
-        for idx,row in self.data.iterrows():
+        for _,row in self.data.iterrows():
             self.count+=1
             #this if statment is here so that in case the update is inturrupted, this doesnt start from beginning
             if(bool(row["done"])):
@@ -156,7 +160,11 @@ class DataGetter():
             thread = threading.Thread(target=self.getweeklyDataFromYF) 
             thread.start()
             self.Threads.append(thread)
-
+    
+    #apprently "Perma-fix" and "Perma fix" are not the same thing!
+    def stripNonAlpabet(self,string):
+        #regex is only lowercase a-z
+        return self.regex.sub("",string)
     def getweeklyDataFromYF(self) -> None:
 
             if(self.yfLimitHit):
@@ -322,35 +330,17 @@ class DataGetter():
         assets = alpaca_api.list_assets(status="active")
         #limit exchange to only nyse and nasdaq
 
-        #get symbol and its corresponding company name as a dict for that CONSTNAT LOOK UP TIME
+        #get symbol and its corresponding company name as a dict for that CONSTANT LOOK UP TIME
         symbolandcompany = self.getsymbolandcomany(assets)
         #get company and corresponding symbol
         companyandsymbol = self.getCompanyandSymbol(assets)
-        for idx,row in self.data.iterrows():
-            if(not bool(row["done"])):
-                ticker = row["Ticker"]
-                #purely experimental, I would think that the first 10 characters of a company name is unique because I really
-                #want to use the constant lookup time of hashmaps to my advantage
-                companyname = row.Company_Name.lower()[0:10]
-                if(ticker in symbolandcompany):
-                    self.data.loc[self.data.idx==idx,"active"]=True
-                    #if the company name is in or the same as the company with the ticker, then the ticker didnt change
-                    if companyname[0:5] == symbolandcompany[ticker][0:5]:
-                        continue
-                    else:
-                        #this means that another company is using the ticker, so I will find the new ticker
-                        company = [x for x in assets if companyname in x.name]
-                        if(len(company)>0):
-                            newticker = company[-1].symbol
-                            if(newticker == ticker):
-                                continue
-                            self.data.loc[self.data.idx==idx,"Ticker"]=newticker
-                            print(f"{companyname} changed it's symbol from {ticker} to {newticker}")
-                            self.scrapper.changeTickerCount+=1
-                            continue
-                if(companyname in companyandsymbol):
-                    newticker = companyandsymbol[companyname]
-                    if(ticker != newticker):
+        for _,row in self.data.iterrows():
+                ticker = row.Ticker
+                idx = row.idx
+                companyname = self.stripNonAlpabet(row.Company_Name.lower()) 
+                if(companyname[0:10] in companyandsymbol):
+                    newticker = self.findClosestMatch(companyandsymbol[companyname[0:10]],companyname)
+                    if(ticker != newticker and newticker!=None):
                         print(f"Company {row.Company_Name}'s symbol is {newticker},instead of {ticker}")
                         self.data.loc[self.data.idx==idx,"Ticker"]=newticker   
                         self.scrapper.changeTickerCount+=1  
@@ -370,16 +360,59 @@ class DataGetter():
     def getsymbolandcomany(self,assets)->dict:
         result = {}
         for i in assets:
-            companyname = i.name.lower()
+            companyname = self.stripNonAlpabet(i.name.lower())
             result[i.symbol]=companyname
         return result
     def getCompanyandSymbol(self,assets)->dict:
         result = {}
         for i in assets:
             #convert it all to lowercase because sometimes things like "New Therapical" and "NEW Therapical" can appear
-            companyname =i.name.lower()[0:10]
-            result[companyname]=i.symbol
+            companyname =  self.stripNonAlpabet(i.name.lower())
+            #some company have some off shore 1/40th owhershup stock or something that have very long names 
+            # if the names too long, its out
+            if(len(companyname)>100):
+                continue
+            partialName = companyname[0:10]
+            indivisual_company = {companyname:i.symbol}
+            if(partialName not in result):
+                result[partialName]=[]
+            result[partialName].append(indivisual_company)
         return result
+
+    #some companies have the same first 10 letters so they are divided into sub groups, 
+    #this function takes the subgroup (companies), and try to match the closest one to the companyname
+    #like consolidated Edison(NYSE:ED) would return instead of consolidated Water(CWCO)
+    def findClosestMatch(self,companies,companyname):
+        if len(companies)==1:
+            return list(companies[0].values())[0]
+        #converts list of dicts into a single dictionary
+        companydict = {}
+        for company in companies:
+            companydict.update(company)
+        companyNames = list(companydict.keys())
+        #if the exact name is already in, no need to loop at all
+        if(companyname in companydict):
+            return companydict[companyname]
+        #I loop through each character of the original name, look at each character of all companies with that starting 10 characters
+        # filter them out and get the correct one. I do this for that constnat look up time about 99% of the stocks
+        #exmaple:   company name: consolidatededison (consolidated Edison(NYSE:ED))
+        #            companies: consolidatededison (consolidated Edison(NYSE:ED)) <-what we want
+        #                       consolidatedwater  (Consolidated Water Co NASDAQ: CWCO) <- what we want to filter out
+        #      since both have the same leading 10 characters, this will loop through and filter out the unwanted one.
+        for i,char in enumerate(companyname):
+            if len(companyNames) ==1:
+                return companydict[companyNames[0]]
+            #both dont match, return None
+            if  len(companyNames)==0:
+                return None
+
+            for x in companyNames:
+                if(x[i]!=char):
+
+                    companyNames.remove(x)
+                
+        
+
     #this function removes all the Companys where data cannot be attained from, or two weeks has not passed
     def cleanup(self):
         #drop those without price or no 2week data
