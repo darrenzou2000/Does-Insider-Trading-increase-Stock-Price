@@ -17,12 +17,12 @@ class Result():
                 drop0 = df.loc[df[time]>0].drop_duplicates(subset='Ticker', keep="first")
                 drop0=drop0.sort_values(by=[f'{time}%'],ascending=False)
                 average = drop0.mean(axis=0,numeric_only=True)
-                result[f"{time}"]= round(average[f'{time}%'],2)
+                result[f"{time}"]= [round(average[f'{time}%'],2),len(drop0)]
             except:
                 continue
         print("\n-----------------------------------------------\nTHIS IS AVERAGE  ")
         for time,data in result.items():
-            print(f"For {time}, the average return is {data}%")
+            print(f"For {time}, the average return is {data[0]}%, count: {data[1]}")
         return result
     def getactive(self,df):
         beforesize = len(df)
@@ -51,5 +51,3 @@ class Result():
             print(f"{yearReturn}% for {ticker} brought on {broughton}, %change in ownership {deltaOwnership}%")
     
             
-
-    

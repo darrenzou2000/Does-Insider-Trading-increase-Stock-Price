@@ -28,11 +28,19 @@ class DataGetter():
         self.scrapper = scrapper
         self.data = scrapper.get_data()
         dfSize = len(self.data)
+        #if every ticker is done, then no need to loop
+        self.notdone = self.data[self.data.done==False]
+        if(self.notdone.empty):
+            self.print_summary()
+            return scrapper
         self.getCorrectStockTicker()
-        #save the correct sticker progress
         self.to_csv()
+        self.notdone = self.data
+        #save the correct sticker progress
+        
+        #grouping the rows into a list so I can query them all at once with one api call
         rowGroup = []
-        for _,row in self.data.iterrows():
+        for _,row in self.notdone.iterrows():
             self.count+=1
             #this if statment is here so that in case the update is inturrupted, this doesnt start from beginning
             if(bool(row["done"])):
@@ -53,12 +61,14 @@ class DataGetter():
         #do the rest
         if(len(self.yfList)>0):
             self.queueStockForYF(doTheRest=True)
+        if(self.yfLimitHit):
+            print("Yahoo finance limit it, unable to complete some of the data, try again in like 20 minutes")
+            quit()
         self.updatepercentChange(self.data)  
         self.cleanup()
         self.to_csv()
         print("done, all data is updated to",scrapper.csvFilePath)
         return scrapper
-
 
     def to_csv(self):
         self.scrapper.data = self.data
@@ -66,7 +76,7 @@ class DataGetter():
 
     def getWeeklyDataFromRowGroup(self,rowGroup,tickers):
         lastrow = rowGroup[-1]
-        startDate=lastrow.Trade_Date
+        startDate=lastrow.Filing_Date
         twoweeksago=(datetime.date.today()-datetime.timedelta(days=14)).strftime('%Y-%m-%d')
         if(startDate>twoweeksago):
             twoweeksago=startDate 
@@ -76,6 +86,7 @@ class DataGetter():
             idx = row.idx
             try:
                 indivisualDF = alpacaDF[alpacaDF["symbol"]==row.Ticker]
+                indivisualDF.index = pd.to_datetime(indivisualDF.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
                 self.getWeeklyDataFromAlpacaDF(indivisualDF,row)
             except IndexError:
                 continue
@@ -86,27 +97,26 @@ class DataGetter():
                 print(f"Error {e} at index {idx} FOR getWeeklyDataFromRowGroup type {errorType}")
                 self.data.loc[self.data.idx==idx,"skip"]=True
 
-    def getWeeklyDataFromAlpacaDF(self,alpacaDF,row):
+    def getWeeklyDataFromAlpacaDF(self,weeklyDF,row):
         idx = row.idx
-        trade_date = row.Trade_Date
+        filing_date = row.Filing_Date
         offset = 0
         self.data.loc[self.data.idx==idx,"done"]=True
-        #this means that YF already checked it
-        twoweekdata =self.data.loc[self.data.idx==idx,"2w"]
-        if(float(twoweekdata)!=0.0):
-            return
+        self.data.loc[self.data.idx==idx,"source"] = "ALPACA"
         #getting offset because the start date is based on the earlist stock's trade date in the row group, that might be serveral weeks before this 
-        for timestamp, row in alpacaDF.iterrows():
+        for timestamp, row in weeklyDF.iterrows():
             timestamp=str(timestamp).split(" ")[0]
-            if(trade_date>timestamp):
+            if(filing_date>timestamp):
                 offset+=1
             else:
                 break
-            #this returns {"2w":2, "1m":4}etc
+        priceAtFilingDate = weeklyDF.iloc[offset].open
+        self.putDataIntoDF(priceAtFilingDate,idx,"Price")
+        #this returns {"2w":2, "1m":4}etc
         lableAndweeknum = self.timeframe.getWeekDict()
         try:
             for timeframe,numofweek in lableAndweeknum.items():
-                priceAtTimeFrame = alpacaDF.iloc[int(numofweek)+offset].open
+                priceAtTimeFrame = weeklyDF.iloc[int(numofweek)+offset].open
                 self.putDataIntoDF(priceAtTimeFrame,idx,timeframe)
         except IndexError:
             return
@@ -115,14 +125,16 @@ class DataGetter():
     #this function takes the list of rows and their tickers, then trys to get data from the time brought
     def getPriceAtTimeBrought(self,rowGroup,tickers):
         lastrow = rowGroup[-1]
-        startDate,endDate=self.getStartAndEndDate(lastrow.Trade_Date)
+        startDate,endDate=self.getStartAndEndDate(lastrow.Filing_Date)
         alpacaDF = self.api.get_bars(tickers,timeframe="1Day",start=startDate, end=endDate,adjustment="all").df
         for row in rowGroup:
             ticker = row.Ticker
-            trade_date = row.Trade_Date
+            filing_date = row.Filing_Date
             idx = row.idx
             try:
                 indivisualDF = alpacaDF[alpacaDF["symbol"]==ticker]
+                #change the time date format to just y-m-d 
+                indivisualDF.index = pd.to_datetime(indivisualDF.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
             except:
                 self.queueStockForYF(row)
                 continue
@@ -132,21 +144,21 @@ class DataGetter():
                 self.queueStockForYF(row)
                 continue
             else:
-                priceWhenBrought = self.getTradePriceWhenBrought(trade_date,indivisualDF,row)
+                priceWhenBrought = self.getTradePriceWhenBrought(filing_date,indivisualDF,row)
                 if(priceWhenBrought==None):
                     self.queueStockForYF(row)
                     continue
                 print(f"Price of {ticker} when brought is {priceWhenBrought}, Currently {self.count} out of {len(self.data)}")
                 self.data.loc[self.data.idx==idx,"Price"]=priceWhenBrought
     
-                # print(f"for {ticker} the price brought at was {priceWhenBrought} at {trade_date}")
+                # print(f"for {ticker} the price brought at was {priceWhenBrought} at {filing_date}")
 
     #this puts the tickers in a list for YF to query all at once
     def queueStockForYF(self,row=pd.Series([]),doTheRest = False):
         if(not row.empty):
             self.yfList.append(row)
             idx = row.idx
-            #skip those that are done, or are marked as skip(marked as skip means no stock data is found
+            #skip those that are done, or are marked as skip(marked as skip means no stock data is found)
             if(self.data.loc[self.data.idx==idx].iloc[0].done or self.data.loc[self.data.idx==idx].iloc[0].skip ):
                 return
         #start quering at 20 stock, or do the rest at the end,
@@ -165,13 +177,13 @@ class DataGetter():
     def stripNonAlpabet(self,string):
         #regex is only lowercase a-z
         return self.regex.sub("",string)
-    def getweeklyDataFromYF(self) -> None:
 
+    def getweeklyDataFromYF(self) -> None:
             if(self.yfLimitHit):
                 return
         #start date is the trade date of the last row in this group because that is the earliest
             lastrow = self.yfList[-1]
-            startDate=lastrow.Trade_Date
+            startDate=lastrow.Filing_Date
             twoweeksago=(datetime.date.today()-datetime.timedelta(days=14)).strftime('%Y-%m-%d')
             if(startDate>twoweeksago):
                 twoweeksago=startDate  
@@ -181,8 +193,9 @@ class DataGetter():
             try:
                 weeklystockDataForAllStockInList = pdr.yahoo.daily.YahooDailyReader(tickers, start=startDate, end=twoweeksago,interval="w",adjust_price=True).read()
             except:
-                print("Sorry, but this query takes too much searches and Yahoo has blocked furthur searches, please wait like 10 minutes to try again")
+                print("Sorry, the yahoo finance hourly limit of 2000 is hit, please wait 20 minutes to try again")
                 self.yfLimitHit = True
+            #change the date format to (y-m-d)
             weeklystockDataForAllStockInList.index = pd.to_datetime(weeklystockDataForAllStockInList.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
             for row in rowGroup:
                 ticker = row.Ticker
@@ -200,19 +213,15 @@ class DataGetter():
         if self.yfLimitHit:
             return
         self.data.loc[self.data.idx==idx,"done"] = True
+        self.data.loc[self.data.idx==idx,"source"] = "YF"
         #if df is empty, no stock data is found, no need to continue
         if indivisualDF.empty:
             self.data.loc[self.data.idx==idx,"skip"]=True
             return
         ticker = str(row.Ticker)
-        trade_Date = row.Trade_Date
         step = self.timeframe.getWeekDict()
         #first get Price at the brought date, adjusted for stock split
         try:
-            #if the last seen data on stock is more than a week out of original trade date, then this trade happens before stock went public, so it is unusable
-            if(not self.within7days(indivisualDF.index.values[0],trade_Date)):
-                print(f"{ticker} was traded outside of it's public traded time idx:{idx}")
-                return
             priceWhenBrought =round(indivisualDF.iloc[0],3)
             self.data.loc[self.data.idx==idx,"Price"]=priceWhenBrought
             print(f"Opening price for {ticker} is {priceWhenBrought} found on YF,idx {idx}")
@@ -224,7 +233,7 @@ class DataGetter():
         except Exception as e:
             print("error:",e , "at index",idx,"FOR queueStockForYF")   
     
-    def getTradePriceWhenBrought(self,trade_date,dailyDF,row):
+    def getTradePriceWhenBrought(self,filing_date,dailyDF,row):
         idx = row.idx
         ticker = row.Ticker
         #checks if the stock had undergone a period of 0 volume, which will disqualfy a stock
@@ -233,7 +242,7 @@ class DataGetter():
             print("failed because of invalidate for ticker", row.Ticker)
             return 
         for timestamp,entry in dailyDF.iterrows():
-            if trade_date in str(timestamp):
+            if filing_date in str(timestamp):
                 return entry.open
         #if the trade date is not in the df, then this stock's trade date is outside of two month period, so I will mark it for indivisual search.
         self.queueStockForYF(row)
@@ -265,15 +274,17 @@ class DataGetter():
             os.system("cls")
 
     #yahoo finanace doesnt give exact date so I have to check if it is within a range of at least 5 days. if yes then the info is good to use
-    def within7days(self,givendate,tradeDate):
+    def within14days(self,givendate,tradeDate):
         givendate = str(givendate).split("T")[0]
+        #modify it so taht alpaca df can use it too
+        givendate = str(givendate).split(" ")[0]
         if(givendate==tradeDate):
             return True
         year,month,day = map(int,givendate.split("-"))
         givendate = datetime.date(year,month,day)
         year,month,day = map(int,tradeDate.split("-"))
         tradeDate = datetime.date(year,month,day)
-        margin = datetime.timedelta(days = 7)
+        margin = datetime.timedelta(days = 14)
         return givendate - margin <= tradeDate <= givendate + margin
 
     #can be refactored to be shorter but this is more readable
@@ -305,18 +316,22 @@ class DataGetter():
         return df
     
     #fixing annoying bugs for alpaca api, such as having a stock data before stock even ipos, but its always followed by volumn=0 for a few weeks
-    #so I can filter that out
+    #also when ticker changes companies, there will be gaps between 
     def validateAlapcaDF(self,df):
         if len(df)==0:
             return False
         consecutive =0
         #sometimes the stock have off days with 0 volume, but if its not consequtive them its fine
-        for i,row in df.iterrows():
+        last_date = df.index.values[0]
+        for trade_date,row in df.iterrows():
+            if(not self.within14days(trade_date,last_date)):
+                return False
             if row.volume==0:
                 consecutive+=1
                 if(consecutive==2):
                     print(df.loc[df.volume==0])
                     return False
+            last_date = trade_date
             consecutive-=1
         return True
     #to adjust for some ticker changes, I will look through all assets in NYSE and Nasdaq and see if the company have a different ticker 
@@ -328,10 +343,6 @@ class DataGetter():
         key = self.getApiKey()
         alpaca_api = tradeapi.REST(key["PUBLIC_KEY"],key["SECRET_KEY"],key["END_POINT"])
         assets = alpaca_api.list_assets(status="active")
-        #limit exchange to only nyse and nasdaq
-
-        #get symbol and its corresponding company name as a dict for that CONSTANT LOOK UP TIME
-        symbolandcompany = self.getsymbolandcomany(assets)
         #get company and corresponding symbol
         companyandsymbol = self.getCompanyandSymbol(assets)
         for _,row in self.data.iterrows():
@@ -339,12 +350,13 @@ class DataGetter():
                 idx = row.idx
                 companyname = self.stripNonAlpabet(row.Company_Name.lower()) 
                 if(companyname[0:10] in companyandsymbol):
-                    newticker = self.findClosestMatch(companyandsymbol[companyname[0:10]],companyname)
+                    self.data.loc[self.data.idx==idx,"active"]=True
+                    newticker,exchange = self.findClosestMatch(companyandsymbol[companyname[0:10]],companyname)
+                    self.data.loc[self.data.idx==idx,"exchange"]=exchange  
                     if(ticker != newticker and newticker!=None):
                         print(f"Company {row.Company_Name}'s symbol is {newticker},instead of {ticker}")
                         self.data.loc[self.data.idx==idx,"Ticker"]=newticker   
                         self.scrapper.changeTickerCount+=1  
-        self.to_csv()
         time.sleep(3)     
     def getStartAndEndDate(self,tradeDate):
         y,m,d = map(int,tradeDate.split("-"))
@@ -356,13 +368,6 @@ class DataGetter():
             return  [str(startTradeDate),str(yesterday)]
         return [str(startTradeDate),str(endTradeDate)]
 
-    #this gives me all the symbol and it's comany name in a dictionary
-    def getsymbolandcomany(self,assets)->dict:
-        result = {}
-        for i in assets:
-            companyname = self.stripNonAlpabet(i.name.lower())
-            result[i.symbol]=companyname
-        return result
     def getCompanyandSymbol(self,assets)->dict:
         result = {}
         for i in assets:
@@ -373,45 +378,52 @@ class DataGetter():
             if(len(companyname)>100):
                 continue
             partialName = companyname[0:10]
-            indivisual_company = {companyname:i.symbol}
+            indivisual_company = {companyname:i.symbol,"exhange":i.exchange}
             if(partialName not in result):
                 result[partialName]=[]
             result[partialName].append(indivisual_company)
         return result
 
-    #some companies have the same first 10 letters so they are divided into sub groups, 
-    #this function takes the subgroup (companies), and try to match the closest one to the companyname
-    #like consolidated Edison(NYSE:ED) would return instead of consolidated Water(CWCO)
-    def findClosestMatch(self,companies,companyname):
+    """explaination: some companies have the same first 10 letters so they are divided into sub groups, 
+    this function takes the subgroup (companies), and try to match the closest one to the companyname
+    like consolidated Edison(NYSE:ED) would return instead of consolidated Water(CWCO)
+    @params 
+    companies: list of dicts with companyname and ticker   example:  [{"consolidatededison": ED,"exchange":NYSE},{"consolidatedwater":COHW,"exhcange":"NYSE"}]
+    companyname: str, stripped company name lowercase, example: consolidatededison
+    given the companyname, this should return (ED,NYSE)
+    :"""
+
+    def findClosestMatch(self,companies:list,companyname) -> tuple:
         if len(companies)==1:
-            return list(companies[0].values())[0]
-        #converts list of dicts into a single dictionary
-        companydict = {}
-        for company in companies:
-            companydict.update(company)
-        companyNames = list(companydict.keys())
-        #if the exact name is already in, no need to loop at all
-        if(companyname in companydict):
-            return companydict[companyname]
-        #I loop through each character of the original name, look at each character of all companies with that starting 10 characters
-        # filter them out and get the correct one. I do this for that constnat look up time about 99% of the stocks
-        #exmaple:   company name: consolidatededison (consolidated Edison(NYSE:ED))
-        #            companies: consolidatededison (consolidated Edison(NYSE:ED)) <-what we want
-        #                       consolidatedwater  (Consolidated Water Co NASDAQ: CWCO) <- what we want to filter out
-        #      since both have the same leading 10 characters, this will loop through and filter out the unwanted one.
-        for i,char in enumerate(companyname):
-            if len(companyNames) ==1:
-                return companydict[companyNames[0]]
-            #both dont match, return None
-            if  len(companyNames)==0:
-                return None
-
-            for x in companyNames:
-                if(x[i]!=char):
-
-                    companyNames.remove(x)
-                
-        
+            if companyname[-5:] not in list(companies[0].keys())[0]:
+                return (None,None)
+            return companies[0].values()
+        longestsimilar = 0
+        index = 0
+        for i,company in enumerate(companies):
+            name =list(company.keys())[0]
+            if(longestsimilar<self.getLongestSimilarInitial(companyname,name)):
+                longestsimilar=self.getLongestSimilarInitial(companyname,name)
+                index = i
+        result = companies[index].values()
+        resultname = list(companies[index].keys())[0]
+        if("blackdiamond" in companyname):
+            print(companies)
+        #last 5 character usally diffienciates between companies. So if its not in there, then this is a different company
+        if companyname[-5:] not in resultname:
+            return (None,None)
+        return result
+            
+    def getLongestSimilarInitial(self,originalstr,comparestr):
+        count =0
+        for i,char in enumerate(comparestr):
+            try:
+                if originalstr[i]!=char:
+                    break
+            except:
+                break
+            count+=1 
+        return count  
 
     #this function removes all the Companys where data cannot be attained from, or two weeks has not passed
     def cleanup(self):
@@ -420,14 +432,16 @@ class DataGetter():
         self.data = self.data.dropna(axis=0,subset=["Price"])
         self.data = self.data[self.data["Price"]!=0]
         self.data = self.data.loc[self.data["2w"]!=0]
-        self.removedDataAmount = self.scrapper.originalSize - len(self.data) 
         self.scrapper.updateScrapped()
+        self.print_summary()
+
+    def print_summary(self):
+        self.removedDataAmount = self.scrapper.originalSize - len(self.data) 
         print("----------------------------------------------------------------------------------------")
         print(f"\ndone,removed {self.removedDataAmount} entries because no stock data can be found by them, or they are overlapps" )
         print("NO stock data can mean multiple things: ticker change, merger, acqusition, going private, or bankruptcy")
         print(f"Had to update the tickers of {self.scrapper.changeTickerCount} companies")
-        print("----------------------------------------------------------------------------------------")
-        
+        print("----------------------------------------------------------------------------------------")   
         
 
     def getApiKey(self):

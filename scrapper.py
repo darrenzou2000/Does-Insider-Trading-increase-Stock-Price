@@ -62,12 +62,13 @@ class Scrapper():
         self.data["done"]=False
         #this is used to filter out entries that have no good data about then, such as buying before ipo or stock no longer exist
         self.data["skip"]=False
+        self.data["source"]=""
         #filters out all the entries with no ticker
         self.data = self.data[self.data["Ticker"]!= "" ]
         self.data = self.data[self.data["Ticker"]!= ".." ]
         self.data = self.data[self.data["Ticker"]!= "Na" ]
         #sort by trade date instead of filing date cus some companies file 10 years after (look at you OSG)
-        self.data = self.data.sort_values("Trade_Date",ascending=False)
+        self.data = self.data.sort_values("Filing_Date",ascending=False)
         print(f"Done scrapping, found: {self.size()} entries")
         self.data.to_csv(csvFilePath) 
         #adding the data to scrapped so that it will show up in the main menu  
@@ -90,13 +91,13 @@ class Scrapper():
             self.count+=1
             column = items.find_all("td")
             insiderData["idx"].append(self.count)
-            Filing_Date = self.getchildData(column[1],"div a") 
+            Filing_Date = self.getchildData(column[1],"div a").split(" ")[0]
             insiderData["Filing_Date"].append(Filing_Date)
             Trade_Date = self.getchildData(column[2],"div") 
             insiderData["Trade_Date"].append(Trade_Date)
             Ticker = self.getchildData(column[3],"b a") 
             insiderData['Ticker'].append(Ticker)
-            Company_Name = self.getchildData(column[4],"a") 
+            Company_Name = self.getchildData(column[4],"a").split("/")[0]
             insiderData['Company_Name'].append(Company_Name)
             Insider_Name = self.getchildData(column[5],"a") 
             insiderData['Insider_Name'].append(Insider_Name)
@@ -141,7 +142,7 @@ class Scrapper():
             self.count+=1
             insiderData["idx"].append(self.count)
 
-            Filing_Date = self.getchildData(column[1],"div a") 
+            Filing_Date = self.getchildData(column[1],"div a").split(" ")[0] 
             insiderData["Filing_Date"].append(Filing_Date)
 
             Trade_Date = self.getchildData(column[2],"div") 
@@ -150,7 +151,7 @@ class Scrapper():
             Ticker = self.getchildData(column[3],"b a") 
             insiderData['Ticker'].append(Ticker)
 
-            Company_Name = self.getchildData(column[4],"a") 
+            Company_Name = self.getchildData(column[4],"a").split("/")[0]
             insiderData['Company_Name'].append(Company_Name)
 
             Industry = self.getchildData(column[5],"a") 

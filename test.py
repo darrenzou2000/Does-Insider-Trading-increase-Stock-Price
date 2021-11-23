@@ -31,8 +31,9 @@ def checkdataAlpaca(trade_Date,ticker):
     key = getApiKey()
     alpaca_api = tradeapi.REST(key["PUBLIC_KEY"],key["SECRET_KEY"],key["END_POINT"])
     twoweeksago=(datetime.date.today()-datetime.timedelta(days=14)).strftime('%Y-%m-%d') 
-    barset = alpaca_api.get_bars([ticker], "5Day", start =trade_Date, end= twoweeksago, adjustment="all",limit=53)
-    print(barset.df)
+    barset = alpaca_api.get_bars([ticker], "5Day", start =trade_Date, end= twoweeksago, adjustment="all",limit=53).df
+    barset.index = pd.to_datetime(barset.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
+    print(barset)
     return barset
 def checkdata(trade_Date,ticker):
     checkdatayf(trade_Date,ticker)
@@ -106,17 +107,16 @@ import warnings
 
 import threading
 def getsomedata():
-    tickers = ['TSLA',"msft","AAPL","OME","FB","PLTR","LCID"]
-    df = pdr.yahoo.daily.YahooDailyReader(tickers, start='2017-01-01', end='2021-09-28',interval="w",adjust_price=True).read()
+    tickers = ["CBL","AAPL"]
+    df = pdr.yahoo.daily.YahooDailyReader(tickers, start='2021-10-10', end='2021-11-22',interval="d",adjust_price=True).read()
     df.index = pd.to_datetime(df.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
     print(df)
     for i in tickers:
         indivisualdf = df[("Open",i)].dropna()
         if(indivisualdf.empty):
             continue
-        # print(indivisualdf.index.values[0], indivisualdf.iloc[0])
     print("DONE!")
-
+    print(df)
 def getsomedata2():
     tickers =['AAPL',"MSFT","FB","TSLA","OSN","GOOG"]
     df = pdr.yahoo.daily.YahooDailyReader(tickers, start='2017-01-01', end='2021-09-28',interval="w",adjust_price=True).read()
@@ -144,5 +144,37 @@ class a:
     def startthread(self):
         t1 = threading.Thread(target=self.count)
         t1.start()
+def validateAlapcaDF(df):
+        if len(df)==0:
+            return False
+        consecutive =0
+        #sometimes the stock have off days with 0 volume, but if its not consequtive them its fine
+        last_date = df.index.values[0]
+        print(last_date)
+        for i,row in df.iterrows():
+            print(i)
+            if(not within10days(i,last_date)):
+                return False
+            if row.volume==0:
+                consecutive+=1
+                if(consecutive==2):
+                    print(df.loc[df.volume==0])
+                    return False
+            last_date = i
+            consecutive-=1
+        return True
 
-checksymbolinAlpaca("CCNEP")
+def within10days(givendate,tradeDate):
+        givendate = str(givendate).split("T")[0]
+        #modify it so taht alpaca df can use it too
+        givendate = str(givendate).split(" ")[0]
+        if(givendate==tradeDate):
+            return True
+        year,month,day = map(int,givendate.split("-"))
+        givendate = datetime.date(year,month,day)
+        year,month,day = map(int,tradeDate.split("-"))
+        tradeDate = datetime.date(year,month,day)
+        margin = datetime.timedelta(days = 10)
+        return givendate - margin <= tradeDate <= givendate + margin
+a= "adbcsdf"
+print(a[-5:])
