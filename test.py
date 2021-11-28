@@ -5,7 +5,6 @@ from requests.api import get
 import  yfinance as yf 
 import alpaca_trade_api as tradeapi
 from yfinance.utils import auto_adjust
-from result import Result
 import os
 import datetime
 from urllib.parse import urlparse, parse_qs
@@ -17,12 +16,11 @@ def undone():
     df["done"]=False
     df.to_csv(filePath,index=False)
     print(df)
-
-
 def checkdatayf(date,ticker):
     print("this is for YF")
     company = yf.Ticker(ticker) 
-    hist = company.history(period="4y",interval="1wk",start = date,back_adjust=True)  
+    # hist = company.history(period="4y",interval="1wk",start = date,back_adjust=True) 
+    hist = pdr.yahoo.daily.YahooDailyReader(ticker, start=date, end="2021-11-10",interval="w",adjust_price=True).read() 
     print(hist)
     return hist
 
@@ -35,9 +33,11 @@ def checkdataAlpaca(trade_Date,ticker):
     barset.index = pd.to_datetime(barset.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
     print(barset)
     return barset
-def checkdata(trade_Date,ticker):
-    checkdatayf(trade_Date,ticker)
-    checkdataAlpaca(trade_Date,ticker)
+def checkdata(input):
+    trade_Date,ticker = input.split(',')
+    yfdf =checkdatayf(trade_Date,ticker)
+    df = checkdataAlpaca(trade_Date,ticker)
+    return (df,yfdf)
 def getApiKey():
         key_file = "key/alpaca_keys.txt"
         with open(key_file,"r") as f:
@@ -106,19 +106,13 @@ import warnings
 # warnings.filterwarnings("ignore")
 
 import threading
-def getsomedata():
-    tickers = ["CBL","AAPL"]
+def getsomedata(a):
+    tickers = ['ASPW', 'POL', 'CLPI', 'OTT', 'SUPN', 'VOCS', 'AXL', 'FSP', 'IPT', 'KAMN', 'NEO', 'S', 'HEVI', 'IPT', 'SURE', 'RBNF', 'RBNF', 'GGN', 'UBOH', 'HTCH']
     df = pdr.yahoo.daily.YahooDailyReader(tickers, start='2021-10-10', end='2021-11-22',interval="d",adjust_price=True).read()
     df.index = pd.to_datetime(df.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
-    print(df)
-    for i in tickers:
-        indivisualdf = df[("Open",i)].dropna()
-        if(indivisualdf.empty):
-            continue
-    print("DONE!")
-    print(df)
+    a.count+=1
 def getsomedata2():
-    tickers =['AAPL',"MSFT","FB","TSLA","OSN","GOOG"]
+    tickers =['AAPL','AAPL','AAPL','AAPL',]
     df = pdr.yahoo.daily.YahooDailyReader(tickers, start='2017-01-01', end='2021-09-28',interval="w",adjust_price=True).read()
     df.index = pd.to_datetime(df.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
     print(df)
@@ -129,7 +123,6 @@ def getsomedata2():
             continue
         # print(indivisualdf.index.values[0], indivisualdf.iloc[0])
     print("DONE! with r2")
-
 import time
 
 class a:
@@ -160,8 +153,9 @@ def validateAlapcaDF(df):
                 if(consecutive==2):
                     print(df.loc[df.volume==0])
                     return False
+            else:
+               consecutive-=1 
             last_date = i
-            consecutive-=1
         return True
 
 def within10days(givendate,tradeDate):
@@ -176,5 +170,33 @@ def within10days(givendate,tradeDate):
         tradeDate = datetime.date(year,month,day)
         margin = datetime.timedelta(days = 10)
         return givendate - margin <= tradeDate <= givendate + margin
-a= "adbcsdf"
-print(a[-5:])
+def validateYFdf(df):
+        lastprice = df.iloc[0].Open
+        for time, row in df.iterrows():
+            currentprice = row.Open
+            if(currentprice/lastprice >5):
+                print("NO")
+            lastprice = currentprice
+count=0
+warnings.filterwarnings("ignore")
+class a:
+    def __init__(self) -> None:
+        self.count =0
+
+a = a()
+t = []
+
+def getyfdata(a):
+    company = yf.Ticker("AAPL") 
+    hist = company.history(period="4y",interval="1wk",start = "2020-01-01",back_adjust=True) 
+    if(not hist.empty):
+        a.count+=1
+        if(a.count%100 ==0):
+            print(a.count)
+for i in range(2500):
+    t1 = threading.Thread(target=getyfdata,args=[a])
+    t1.start()
+    t.append(t1)
+for i in t:
+    i.join()
+print(a.count)

@@ -36,18 +36,17 @@ class Scrapper():
 
         if self.isgrouped(url):
             print("detected that this is a cluster, scrapping could take up to a minute")
-            insiderData = {'idx':[],'Filing_Date':[], 'Trade_Date':[], 'Ticker':[], 'Company_Name':[], 'Industry':[], 'Insider_Amount':[], 'Trade_Type':[], 'Price':[], 'Qty':[], 'Owned':[], 'ΔOwn':[], 'Value':[]}
+            insiderData = {'idx':[],"Option":[],'Filing_Date':[], 'Trade_Date':[], 'Ticker':[], 'Company_Name':[], 'Industry':[], 'Insider_Amount':[], 'Trade_Type':[], 'Price':[], 'Qty':[], 'Owned':[], 'ΔOwn':[], 'Value':[]}
             insiderData = self.turnGroupedDataIntoDict(insiderData,url)
         #insider data contains all the major fields, this will be converted into dataframe and eventurally csv
         #takes the html data of requests and puts it into insider data
         else:
-            insiderData = {'idx':[],'Filing_Date':[], 'Trade_Date':[], 'Ticker':[], 'Company_Name':[], 'Insider_Name':[], 'Title':[], 'Trade_Type':[], 'Price':[], 'Qty':[], 'Owned':[], 'ΔOwn':[], 'Value':[]}
+            insiderData = {'idx':[],"Option":[],'Filing_Date':[], 'Trade_Date':[], 'Ticker':[], 'Company_Name':[], 'Insider_Name':[], 'Title':[], 'Trade_Type':[], 'Price':[], 'Qty':[], 'Owned':[], 'ΔOwn':[], 'Value':[]}
             insiderData = self.turnDataintodict(insiderData,url)
         
         t = TimeFrame()
         self.timeframe = t.timeframe
         self.timeframepercent = t.timeframepecent
-
         #takes the dict and turn it into data frame
         self.data= pd.DataFrame(data=insiderData)
         #keeps track of original size 
@@ -91,6 +90,10 @@ class Scrapper():
             self.count+=1
             column = items.find_all("td")
             insiderData["idx"].append(self.count)
+
+            Option = column[0].get_text()
+            insiderData["Option"].append(self.isOptionsTrade(Option))
+
             Filing_Date = self.getchildData(column[1],"div a").split(" ")[0]
             insiderData["Filing_Date"].append(Filing_Date)
             Trade_Date = self.getchildData(column[2],"div") 
@@ -129,6 +132,10 @@ class Scrapper():
             insiderData = self.turnDataintodict(insiderData,url)
         return insiderData
     
+    # D means options trade
+    def isOptionsTrade(self,type):
+        return "D" in type
+
     #same function as turnDataintodict, but it deals with cluster instead of indivisual
     def turnGroupedDataIntoDict(self,insiderData,url) ->dict:
         result = requests.get(url)
@@ -141,6 +148,9 @@ class Scrapper():
             column = items.find_all("td")
             self.count+=1
             insiderData["idx"].append(self.count)
+
+            Option = column[0].get_text()
+            insiderData["Option"].append(self.isOptionsTrade(Option))
 
             Filing_Date = self.getchildData(column[1],"div a").split(" ")[0] 
             insiderData["Filing_Date"].append(Filing_Date)
@@ -246,7 +256,7 @@ class Scrapper():
         scrapped = json.load(f)
         for item in scrapped["Scrapped"]:
             if(item["url"]==self.url):
-                item["changeTickerCount"] = self.changeTickerCount
+                item["changeTickerCount"] += self.changeTickerCount
                 break
         with open("alreadyscrapped.json","w") as f:
             json.dump(scrapped,f)

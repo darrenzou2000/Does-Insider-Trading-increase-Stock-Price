@@ -10,16 +10,18 @@ import time
 import warnings
 import threading
 import re
+
 warnings.filterwarnings("ignore")
 class DataGetter():
     def __init__(self) -> None:
+        
         self.timeframe = Scrapper.TimeFrame()
         self.key = self.getApiKey()
         self.api= tradeapi.REST(self.key["PUBLIC_KEY"],self.key["SECRET_KEY"],self.key["END_POINT"])
         #since I can query multiple data from YF, I need to keep a list just for YF
         self.yfList = []
+        self.yfcount=0
         self.Threads = []
-        self.yfLimitHit = False
         self.count =0
         self.regex = re.compile('[^a-z]')
         return
@@ -29,15 +31,13 @@ class DataGetter():
         self.data = scrapper.get_data()
         dfSize = len(self.data)
         #if every ticker is done, then no need to loop
-        self.notdone = self.data[self.data.done==False]
-        if(self.notdone.empty):
+        if(self.data[self.data.done==False].empty):
             self.print_summary()
             return scrapper
         self.getCorrectStockTicker()
         self.to_csv()
-        self.notdone = self.data
-        #save the correct sticker progress
-        
+        self.notdone = self.data[self.data.done==False]
+        self.count = len(self.data)-len(self.notdone)
         #grouping the rows into a list so I can query them all at once with one api call
         rowGroup = []
         for _,row in self.notdone.iterrows():
@@ -49,8 +49,8 @@ class DataGetter():
             #alapca allows multiple tickers be queried at once so I will do one api call every 10 rows
             if(len(rowGroup)<20 and (dfSize-self.count)>19): 
                 continue
+            
             tickers= self.getTickersFromGroup(rowGroup)
-            # print(f"currently doing {tickers}, on {count} out of {self.scrapper.size()}")
             self.getPriceAtTimeBrought(rowGroup,tickers) 
             self.getWeeklyDataFromRowGroup(rowGroup,tickers)
             rowGroup.clear() 
@@ -61,9 +61,6 @@ class DataGetter():
         #do the rest
         if(len(self.yfList)>0):
             self.queueStockForYF(doTheRest=True)
-        if(self.yfLimitHit):
-            print("Yahoo finance limit it, unable to complete some of the data, try again in like 20 minutes")
-            quit()
         self.updatepercentChange(self.data)  
         self.cleanup()
         self.to_csv()
@@ -84,6 +81,8 @@ class DataGetter():
         alpacaDF = self.api.get_bars(tickers,timeframe="5Day",start=startDate, end=twoweeksago,adjustment="all").df
         for row in rowGroup:
             idx = row.idx
+            if(self.isrowDone(idx)):
+                continue
             try:
                 indivisualDF = alpacaDF[alpacaDF["symbol"]==row.Ticker]
                 indivisualDF.index = pd.to_datetime(indivisualDF.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
@@ -93,8 +92,7 @@ class DataGetter():
             except KeyError:
                 continue
             except Exception as e:
-                errorType = type(e)
-                print(f"Error {e} at index {idx} FOR getWeeklyDataFromRowGroup type {errorType}")
+                print(f"Error {e} at index {idx} FOR getWeeklyDataFromRowGroup type { type(e)}")
                 self.data.loc[self.data.idx==idx,"skip"]=True
 
     def getWeeklyDataFromAlpacaDF(self,weeklyDF,row):
@@ -110,8 +108,10 @@ class DataGetter():
                 offset+=1
             else:
                 break
-        priceAtFilingDate = weeklyDF.iloc[offset].open
-        self.putDataIntoDF(priceAtFilingDate,idx,"Price")
+        starttime = weeklyDF.iloc[0].name
+        if(not self.within14days(starttime,filing_date)):
+            self.data.loc[self.data.idx==idx,"skip"]=True
+            return
         #this returns {"2w":2, "1m":4}etc
         lableAndweeknum = self.timeframe.getWeekDict()
         try:
@@ -131,40 +131,42 @@ class DataGetter():
             ticker = row.Ticker
             filing_date = row.Filing_Date
             idx = row.idx
+            indivisualDF = pd.DataFrame()
             try:
                 indivisualDF = alpacaDF[alpacaDF["symbol"]==ticker]
                 #change the time date format to just y-m-d 
                 indivisualDF.index = pd.to_datetime(indivisualDF.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
-            except:
+            except Exception as e:
                 self.queueStockForYF(row)
                 continue
-            #if symbol doesnt exist on alpaca, check yahoo finance
+            #if symbol doesnt exist on alpaca or the dates dont match, check yahoo finance
             if(indivisualDF.empty):
                 #yahoo finance already gets all the 2week/months data, so no need to query data about it again
+                print(f"send {ticker} to YF because alpaca dont have the data, idx {idx}")
                 self.queueStockForYF(row)
                 continue
             else:
+                indivisualDF = indivisualDF[indivisualDF["volume"]!=0]
                 priceWhenBrought = self.getTradePriceWhenBrought(filing_date,indivisualDF,row)
                 if(priceWhenBrought==None):
+                    print(f"send {ticker} to YF price brougth cant be found on alpaca")
                     self.queueStockForYF(row)
                     continue
                 print(f"Price of {ticker} when brought is {priceWhenBrought}, Currently {self.count} out of {len(self.data)}")
                 self.data.loc[self.data.idx==idx,"Price"]=priceWhenBrought
-    
-                # print(f"for {ticker} the price brought at was {priceWhenBrought} at {filing_date}")
 
     #this puts the tickers in a list for YF to query all at once
     def queueStockForYF(self,row=pd.Series([]),doTheRest = False):
         if(not row.empty):
+            self.yfcount+=1
             self.yfList.append(row)
             idx = row.idx
-            #skip those that are done, or are marked as skip(marked as skip means no stock data is found)
-            if(self.data.loc[self.data.idx==idx].iloc[0].done or self.data.loc[self.data.idx==idx].iloc[0].skip ):
-                return
-        #start quering at 20 stock, or do the rest at the end,
-        if(self.yfLimitHit):
-            print("Sorry but the data limit on yahoo finance is hit (about 2000 entires), please reselect the entry after about 20 minutes")
-            quit()
+            self.data.loc[self.data.idx==idx,"skip"]=True
+
+        if(self.yfcount>1500):
+            #do the stocks indivisually
+            pass
+
         if(len(self.yfList)==20 or doTheRest):
             #use threading to get yf data cus it takes FOREVER
             tickers = self.getTickersFromGroup(self.yfList,False)
@@ -179,8 +181,6 @@ class DataGetter():
         return self.regex.sub("",string)
 
     def getweeklyDataFromYF(self) -> None:
-            if(self.yfLimitHit):
-                return
         #start date is the trade date of the last row in this group because that is the earliest
             lastrow = self.yfList[-1]
             startDate=lastrow.Filing_Date
@@ -188,34 +188,30 @@ class DataGetter():
             if(startDate>twoweeksago):
                 twoweeksago=startDate  
             tickers = self.getTickersFromGroup(self.yfList,asOneString=False)
-            rowGroup= self.yfList
+            rowGroup= self.yfList.copy()
             self.yfList.clear()
-            try:
-                weeklystockDataForAllStockInList = pdr.yahoo.daily.YahooDailyReader(tickers, start=startDate, end=twoweeksago,interval="w",adjust_price=True).read()
-            except:
-                print("Sorry, the yahoo finance hourly limit of 2000 is hit, please wait 20 minutes to try again")
-                self.yfLimitHit = True
+            weeklystockDataForAllStockInList= pd.DataFrame()
+            weeklystockDataForAllStockInList = pdr.yahoo.daily.YahooDailyReader(tickers, start=startDate, end=twoweeksago,interval="w",adjust_price=True).read()
             #change the date format to (y-m-d)
             weeklystockDataForAllStockInList.index = pd.to_datetime(weeklystockDataForAllStockInList.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
             for row in rowGroup:
                 ticker = row.Ticker
                 #this will filter the DF into just the column of the Open price of each company
-                try:
-                    indivisualdf = weeklystockDataForAllStockInList[("Open",ticker)].dropna()
-                except:
-                    indivisualdf = pd.DataFrame()
+                indivisualdf = weeklystockDataForAllStockInList[("Open",ticker)].dropna()
                 self.inputYFDataIntoDF(indivisualdf,row)
-            
+
+    def isrowDone(self,idx):
+        return self.data.loc[self.data.idx==idx].iloc[0].done or self.data.loc[self.data.idx==idx].iloc[0].skip 
+
     def inputYFDataIntoDF(self,indivisualDF,row):
         idx = row.idx
         #yahoo finance have a data limit so if that limit is hit then all the incomming df would be empty. so if the limit is hit
         # then the program should not mark that row as done 
-        if self.yfLimitHit:
-            return
         self.data.loc[self.data.idx==idx,"done"] = True
         self.data.loc[self.data.idx==idx,"source"] = "YF"
         #if df is empty, no stock data is found, no need to continue
-        if indivisualDF.empty:
+        #if theres a GIANT spike in price, like 5x, then its SUS, safer to just filter it out
+        if indivisualDF.empty or not self.validateYFdf(indivisualDF):
             self.data.loc[self.data.idx==idx,"skip"]=True
             return
         ticker = str(row.Ticker)
@@ -233,16 +229,25 @@ class DataGetter():
         except Exception as e:
             print("error:",e , "at index",idx,"FOR queueStockForYF")   
     
-    def getTradePriceWhenBrought(self,filing_date,dailyDF,row):
+    #sometimes a pre ipo price was given like for ENCR on 2015-05-08, where the price went from 0.15 to 6 overnight, but its not even publicly tradable yet
+    #this will filter that out
+    def validateYFdf(self,df):
+        lastprice = df.iloc[0].High
+        for time, row in df.iterrows():
+            currentprice = row.High
+            if(currentprice/lastprice >5):
+                return False
+            lastprice = currentprice
+        return True
+    def getTradePriceWhenBrought(self,filing_date,dailyDF,row) ->float:
         idx = row.idx
         ticker = row.Ticker
         #checks if the stock had undergone a period of 0 volume, which will disqualfy a stock
         if(not self.validateAlapcaDF(dailyDF)):
-            self.data.loc[self.data.idx==idx,"skip"]=True
-            print("failed because of invalidate for ticker", row.Ticker)
-            return 
+            self.queueStockForYF(row)
+            return None
         for timestamp,entry in dailyDF.iterrows():
-            if filing_date in str(timestamp):
+            if filing_date == timestamp:
                 return entry.open
         #if the trade date is not in the df, then this stock's trade date is outside of two month period, so I will mark it for indivisual search.
         self.queueStockForYF(row)
@@ -331,8 +336,9 @@ class DataGetter():
                 if(consecutive==2):
                     print(df.loc[df.volume==0])
                     return False
+            else:
+               consecutive-=1
             last_date = trade_date
-            consecutive-=1
         return True
     #to adjust for some ticker changes, I will look through all assets in NYSE and Nasdaq and see if the company have a different ticker 
     def getCorrectStockTicker(self):
@@ -428,10 +434,10 @@ class DataGetter():
     #this function removes all the Companys where data cannot be attained from, or two weeks has not passed
     def cleanup(self):
         #drop those without price or no 2week data
-        self.data = self.data[self.data["skip"]==False]
-        self.data = self.data.dropna(axis=0,subset=["Price"])
-        self.data = self.data[self.data["Price"]!=0]
-        self.data = self.data.loc[self.data["2w"]!=0]
+        # self.data = self.data[self.data["skip"]==False]
+        # self.data = self.data.dropna(axis=0,subset=["Price"])
+        # self.data = self.data[self.data["Price"]!=0]
+        # self.data = self.data.loc[self.data["2w"]!=0]
         self.scrapper.updateScrapped()
         self.print_summary()
 

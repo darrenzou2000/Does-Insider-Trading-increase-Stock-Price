@@ -1,15 +1,20 @@
 import pandas as pd
-from scrapper import Scrapper, TimeFrame
+from scrapper import TimeFrame
 class Result():
-    def __init__(self,scrapper) -> None:
-        self.scrapper = scrapper
+    def __init__(self,df) -> None:
+        self.df = df
+        self.cleanup()
         self.timeframe = TimeFrame()
         self.tf = self.timeframe.timeframe
         self.tfp = self.timeframe.timeframepecent
-        return
-
+    def cleanup(self):
+        self.df = self.df.dropna(axis=0,subset=["Price"])
+        self.df = self.df[self.df["Price"]!=0]
+        self.df = self.df.loc[self.df["2w"]!=0]
     #gets average of every column 
-    def getAVG(self,df):
+    def getAVG(self,df=None):
+        if(df==None):
+            df = self.df
         result = {f"{x}":None for x in self.tf}
         for time in self.tf:
             try:
@@ -24,11 +29,15 @@ class Result():
         for time,data in result.items():
             print(f"For {time}, the average return is {data[0]}%, count: {data[1]}")
         return result
-    def getactive(self,df):
+    def getactive(self,df=None):
+        if(df==None):
+            df = self.df
         beforesize = len(df)
         activeDF = df.loc[df.active==True]
         print(f" out of {beforesize}, {len(activeDF)} are active today ")
-    def getPositive(self,df):
+    def getPositive(self,df=None):
+        if(df==None):
+            df = self.df
         print("\n-----------------------------------------------\nTHIS IS NUMBER OF POSITIVE RETURNS")
         for time in self.tf:
             try:
@@ -46,8 +55,8 @@ class Result():
         for i,row in top.iterrows():
             ticker = row["Ticker"]
             yearReturn = row["1yr%"]
-            broughton = row["Trade_Date"]
+            filedOn = row["Filing_Date"]
             deltaOwnership = row["ΔOwn"]
-            print(f"{yearReturn}% for {ticker} brought on {broughton}, %change in ownership {deltaOwnership}%")
+            print(f"{yearReturn}% for {ticker} Filed on {filedOn}, %change in ownership {deltaOwnership}%")
     
             

@@ -8,6 +8,7 @@ import pandas as pd
 from pathlib import Path
 class App():
     def __init__(self) -> None:
+        self.removeEmptyDataFiles()
         self.printScrapped()
         self.generalData()
 
@@ -26,10 +27,10 @@ class App():
 
     def generalData(self):
         df = self.scrapper.get_data()
-        result = Result(self.scrapper)
-        result.getPositive(df)
-        result.getAVG(df)
-        result.getactive(df)
+        result = Result(self.scrapper.get_data())
+        result.getPositive()
+        result.getAVG()
+        result.getactive()
 
     def getScrapper(self)-> Scrapper:
         action = input("\ntype the number of the data you want to check or 'new' if you want to add another one (or 'remove' and 'redo'):\n")
@@ -54,8 +55,6 @@ class App():
                 filePath = self.createFile(filename)
             if(action.strip().lower()=="redo"):
                url,desc,filePath=self.redo()
-            else:
-                print("Not an option please enter: new, remove,  or redo")   
         scrapper = Scrapper(url,filePath,desc)
         self.scrapper = scrapper
 
@@ -128,15 +127,19 @@ class App():
             with open("key/alpaca_keys.txt",'w') as f:
                 f.write(f"{public_key} {secret_key} {endpoint}")
             f.close
-
+    def removeEmptyDataFiles(self):
+        dir_path ="data/"
+        for root, dirnames, files in os.walk(dir_path):
+            for f in files:
+                full_name = os.path.join(root, f)
+                if os.path.getsize(full_name) == 0:
+                    print("removed",full_name, "because it is empty")
+                    os.remove(full_name)
 
 #drops the 5 from both ends so the avg is more representative
 
 if __name__ == "__main__":
     a = App()
-
-
-
     #dont worry aobut this,its just there so I can leave data gathering over night
     # url = ["http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=-1&fdr=11%2F08%2F2011+-+11%2F18%2F2021&td=-1&tdr=11%2F08%2F2011+-+11%2F18%2F2021&fdlyl=&fdlyh=&daysago=70&xp=1&vl=&vh=&ocl=5&och=&sic1=-1&sicl=100&sich=9999&isceo=1&grp=0&nfl=&nfh=&nil=2&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=1000&page=1","http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=-1&fdr=11%2F08%2F2011+-+11%2F18%2F2021&td=-1&tdr=11%2F08%2F2011+-+11%2F18%2F2021&fdlyl=&fdlyh=&daysago=70&xp=1&vl=&vh=&ocl=5&och=&sic1=-1&sicl=100&sich=9999&ispres=1&grp=0&nfl=&nfh=&nil=2&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=1000&page=1","http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=-1&fdr=11%2F08%2F2011+-+11%2F18%2F2021&td=-1&tdr=11%2F08%2F2011+-+11%2F18%2F2021&fdlyl=&fdlyh=&daysago=70&xp=1&vl=&vh=&ocl=5&och=&sic1=-1&sicl=100&sich=9999&iscfo=1&grp=0&nfl=&nfh=&nil=2&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=1000&page=1","http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=-1&fdr=11%2F08%2F2011+-+11%2F18%2F2021&td=-1&tdr=11%2F08%2F2011+-+11%2F18%2F2021&fdlyl=&fdlyh=&daysago=70&xp=1&vl=&vh=&ocl=5&och=&sic1=-1&sicl=100&sich=9999&isdirector=1&grp=0&nfl=&nfh=&nil=2&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=1000&page=1"]
     # desc = ["CEO purchases 5% or up from 2011 to 2021","Pres purchases 5% or up from 2011 to 2021","CFO purchases 5% or up from 2011 to 2021","DIrector purchases 5% or up from 2011 to 2021"]
