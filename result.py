@@ -8,10 +8,10 @@ class Result():
         self.tf = self.timeframe.timeframe
         self.tfp = self.timeframe.timeframepecent
     def cleanup(self):
-        self.df = self.df.dropna(axis=0,subset=["Price"])
+        # self.df = self.df.dropna(axis=0,subset=["Price"])
         self.df = self.df[self.df["Price"]!=0]
         self.df = self.df.loc[self.df["2w"]!=0]
-    #gets average of every column 
+    #gets average of every timeframe 
     def getAVG(self,df=None):
         if(df==None):
             df = self.df
@@ -19,8 +19,7 @@ class Result():
         for time in self.tf:
             try:
                 # gets all entry thats not empty for that time (eg: 6 dollars after 4 month)
-                drop0 = df.loc[df[time]>0].drop_duplicates(subset='Ticker', keep="first")
-                drop0=drop0.sort_values(by=[f'{time}%'],ascending=False)
+                drop0=df.sort_values(by=[f'{time}%'],ascending=False)
                 average = drop0.mean(axis=0,numeric_only=True)
                 result[f"{time}"]= [round(average[f'{time}%'],2),len(drop0)]
             except:
@@ -41,7 +40,7 @@ class Result():
         print("\n-----------------------------------------------\nTHIS IS NUMBER OF POSITIVE RETURNS")
         for time in self.tf:
             try:
-                havereturn = df.loc[df[time]>0].drop_duplicates(subset='Ticker', keep="first")
+                havereturn = df.loc[df[time]>0]
                 positive = havereturn.loc[df[f"{time}%"]>0]
                 print(f"out of {len(havereturn)}, {len(positive)} returned a profit after {time}, about {round(len(positive)/len(havereturn)*100,2)}%") 
             except:

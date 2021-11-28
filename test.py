@@ -10,6 +10,8 @@ import datetime
 from urllib.parse import urlparse, parse_qs
 import pandas_datareader as pdr
 
+from scrapper import Scrapper,DataGetter
+
 def undone():
     filePath = "data/VP50%last4year.csv"
     df = pd.read_csv(filePath)
@@ -19,8 +21,7 @@ def undone():
 def checkdatayf(date,ticker):
     print("this is for YF")
     company = yf.Ticker(ticker) 
-    # hist = company.history(period="4y",interval="1wk",start = date,back_adjust=True) 
-    hist = pdr.yahoo.daily.YahooDailyReader(ticker, start=date, end="2021-11-10",interval="w",adjust_price=True).read() 
+    hist = company.history(period="4y",interval="1wk",start = date,back_adjust=True) 
     print(hist)
     return hist
 
@@ -102,8 +103,6 @@ def getinsider(df,file):
         bestreturn = onecompany[onecompany["Ticker"]==ticker].iloc[0]["4m%"]
         print(f"for Ticker {ticker},number of insider is {num}, the best return after 4m is: {bestreturn}%")
         returns.append(bestreturn)
-import warnings
-# warnings.filterwarnings("ignore")
 
 import threading
 def getsomedata(a):
@@ -170,33 +169,11 @@ def within10days(givendate,tradeDate):
         tradeDate = datetime.date(year,month,day)
         margin = datetime.timedelta(days = 10)
         return givendate - margin <= tradeDate <= givendate + margin
-def validateYFdf(df):
-        lastprice = df.iloc[0].Open
-        for time, row in df.iterrows():
-            currentprice = row.Open
-            if(currentprice/lastprice >5):
-                print("NO")
-            lastprice = currentprice
-count=0
-warnings.filterwarnings("ignore")
-class a:
-    def __init__(self) -> None:
-        self.count =0
 
-a = a()
-t = []
 
-def getyfdata(a):
-    company = yf.Ticker("AAPL") 
-    hist = company.history(period="4y",interval="1wk",start = "2020-01-01",back_adjust=True) 
-    if(not hist.empty):
-        a.count+=1
-        if(a.count%100 ==0):
-            print(a.count)
-for i in range(2500):
-    t1 = threading.Thread(target=getyfdata,args=[a])
-    t1.start()
-    t.append(t1)
-for i in t:
-    i.join()
-print(a.count)
+def testonerow():
+    df = pd.read_csv("test.csv")
+    getter = DataGetter()
+    getter.testOneRow(df)
+df = checkdatayf("2014-09-26","MMTC").head(52)
+print(df)

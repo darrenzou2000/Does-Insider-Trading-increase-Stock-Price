@@ -1,0 +1,2 @@
+,Unnamed: 0,idx,Option,Filing_Date,Trade_Date,Ticker,Company_Name,Insider_Name,Title,Trade_Type,Price,Qty,Owned,ΔOwn,Value,2w,1m,2m,3m,4m,5m,6m,7m,8m,9m,10m,11m,1yr,2yr,2w%,1m%,2m%,3m%,4m%,5m%,6m%,7m%,8m%,9m%,10m%,11m%,1yr%,2yr%,active,done,skip,source,exchange
+0,259,260,False,2020-11-18,2020-11-18,OSS,"One Stop Systems, Inc.",Raun David,"Pres, CEO",P - Purchase,2.29,5000.0,62910.0,9.0,11150.0,2.75,3.05,4.8,7.85,7.68,5.0,5.84,6.14,6.01,5.3,5.14,5.1,0.0,0.0,0.0,33.19,109.61,242.79,235.37,118.34,155.02,168.12,162.45,131.44,124.45,122.71,0.0,0.0,True,True,False,ALPACA,NASDAQ

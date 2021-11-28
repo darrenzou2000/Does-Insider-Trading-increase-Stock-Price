@@ -7,6 +7,7 @@ import alpaca_trade_api as tradeapi
 import pandas as pd
 import scrapper as Scrapper
 import time
+import yfinance as yf 
 import warnings
 import threading
 import re
@@ -14,7 +15,6 @@ import re
 warnings.filterwarnings("ignore")
 class DataGetter():
     def __init__(self) -> None:
-        
         self.timeframe = Scrapper.TimeFrame()
         self.key = self.getApiKey()
         self.api= tradeapi.REST(self.key["PUBLIC_KEY"],self.key["SECRET_KEY"],self.key["END_POINT"])
@@ -55,12 +55,11 @@ class DataGetter():
             self.getWeeklyDataFromRowGroup(rowGroup,tickers)
             rowGroup.clear() 
             self.to_csv()
-        print("WAITING FOR YF TO FINISH")
-        for i in self.Threads:
-            i.join()
         #do the rest
         if(len(self.yfList)>0):
             self.queueStockForYF(doTheRest=True)
+        for i in self.Threads:
+            i.join()
         self.updatepercentChange(self.data)  
         self.cleanup()
         self.to_csv()
@@ -95,6 +94,15 @@ class DataGetter():
                 print(f"Error {e} at index {idx} FOR getWeeklyDataFromRowGroup type { type(e)}")
                 self.data.loc[self.data.idx==idx,"skip"]=True
 
+    def testOneRow(self,df):
+        row = df.iloc[0]
+        tickers = [row.Ticker]
+        self.data = df
+        self.getPriceAtTimeBrought([row],tickers) 
+        self.getWeeklyDataFromRowGroup([row],tickers)
+        self.queueStockForYF(doTheRest=True)
+        self.data.to_csv("test.csv")
+
     def getWeeklyDataFromAlpacaDF(self,weeklyDF,row):
         idx = row.idx
         filing_date = row.Filing_Date
@@ -103,19 +111,18 @@ class DataGetter():
         self.data.loc[self.data.idx==idx,"source"] = "ALPACA"
         #getting offset because the start date is based on the earlist stock's trade date in the row group, that might be serveral weeks before this 
         for timestamp, row in weeklyDF.iterrows():
-            timestamp=str(timestamp).split(" ")[0]
             if(filing_date>timestamp):
                 offset+=1
             else:
                 break
-        starttime = weeklyDF.iloc[0].name
+        starttime = weeklyDF.iloc[0+offset].name
         if(not self.within14days(starttime,filing_date)):
-            self.data.loc[self.data.idx==idx,"skip"]=True
+            self.queueStockForYF(row)
             return
         #this returns {"2w":2, "1m":4}etc
-        lableAndweeknum = self.timeframe.getWeekDict()
+        timeframeAndweeknum = self.timeframe.getWeekDict()
         try:
-            for timeframe,numofweek in lableAndweeknum.items():
+            for timeframe,numofweek in timeframeAndweeknum.items():
                 priceAtTimeFrame = weeklyDF.iloc[int(numofweek)+offset].open
                 self.putDataIntoDF(priceAtTimeFrame,idx,timeframe)
         except IndexError:
@@ -142,7 +149,6 @@ class DataGetter():
             #if symbol doesnt exist on alpaca or the dates dont match, check yahoo finance
             if(indivisualDF.empty):
                 #yahoo finance already gets all the 2week/months data, so no need to query data about it again
-                print(f"send {ticker} to YF because alpaca dont have the data, idx {idx}")
                 self.queueStockForYF(row)
                 continue
             else:
@@ -161,45 +167,31 @@ class DataGetter():
             self.yfcount+=1
             self.yfList.append(row)
             idx = row.idx
+            #mark it as skip so alpaca dont look for it
             self.data.loc[self.data.idx==idx,"skip"]=True
-
-        if(self.yfcount>1500):
-            #do the stocks indivisually
-            pass
-
         if(len(self.yfList)==20 or doTheRest):
             #use threading to get yf data cus it takes FOREVER
-            tickers = self.getTickersFromGroup(self.yfList,False)
-            print(tickers, "is put into threading")
             thread = threading.Thread(target=self.getweeklyDataFromYF) 
             thread.start()
             self.Threads.append(thread)
-    
+
     #apprently "Perma-fix" and "Perma fix" are not the same thing!
     def stripNonAlpabet(self,string):
-        #regex is only lowercase a-z
+        #regex the string to only lowercase a-z
         return self.regex.sub("",string)
 
     def getweeklyDataFromYF(self) -> None:
         #start date is the trade date of the last row in this group because that is the earliest
-            lastrow = self.yfList[-1]
-            startDate=lastrow.Filing_Date
-            twoweeksago=(datetime.date.today()-datetime.timedelta(days=14)).strftime('%Y-%m-%d')
-            if(startDate>twoweeksago):
-                twoweeksago=startDate  
-            tickers = self.getTickersFromGroup(self.yfList,asOneString=False)
             rowGroup= self.yfList.copy()
-            self.yfList.clear()
-            weeklystockDataForAllStockInList= pd.DataFrame()
-            weeklystockDataForAllStockInList = pdr.yahoo.daily.YahooDailyReader(tickers, start=startDate, end=twoweeksago,interval="w",adjust_price=True).read()
-            #change the date format to (y-m-d)
-            weeklystockDataForAllStockInList.index = pd.to_datetime(weeklystockDataForAllStockInList.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
+            self.yfList.clear() 
+            # weeklystockDataForAllStockInList.index = pd.to_datetime(weeklystockDataForAllStockInList.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
             for row in rowGroup:
-                ticker = row.Ticker
-                #this will filter the DF into just the column of the Open price of each company
-                indivisualdf = weeklystockDataForAllStockInList[("Open",ticker)].dropna()
-                self.inputYFDataIntoDF(indivisualdf,row)
-
+                company = yf.Ticker(str(row.Ticker)) 
+                filingDate = row.Filing_Date
+                hist = company.history(period="3y",interval="1wk",start = filingDate,back_adjust=True)
+                self.inputYFDataIntoDF(hist,row)
+            
+    
     def isrowDone(self,idx):
         return self.data.loc[self.data.idx==idx].iloc[0].done or self.data.loc[self.data.idx==idx].iloc[0].skip 
 
@@ -210,19 +202,18 @@ class DataGetter():
         self.data.loc[self.data.idx==idx,"done"] = True
         self.data.loc[self.data.idx==idx,"source"] = "YF"
         #if df is empty, no stock data is found, no need to continue
-        #if theres a GIANT spike in price, like 5x, then its SUS, safer to just filter it out
+        #if theres a GIANT spike in price, like 10x from lastweeks's high and a week later, then its SUS, safer to just filter it out
         if indivisualDF.empty or not self.validateYFdf(indivisualDF):
-            self.data.loc[self.data.idx==idx,"skip"]=True
+            self.scrapper.removecount +=1
             return
-        ticker = str(row.Ticker)
         step = self.timeframe.getWeekDict()
         #first get Price at the brought date, adjusted for stock split
         try:
-            priceWhenBrought =round(indivisualDF.iloc[0],3)
+            priceWhenBrought =round(indivisualDF.iloc[0].Open,3)
             self.data.loc[self.data.idx==idx,"Price"]=priceWhenBrought
-            print(f"Opening price for {ticker} is {priceWhenBrought} found on YF,idx {idx}")
+            print(f"Opening price for {row.Ticker} is {priceWhenBrought} found on YF,count {self.count}/{len(self.data)}")
             for timeframe, i in step.items():
-                    priceAtThatTime = round(indivisualDF.iloc[i],3)
+                    priceAtThatTime = round(indivisualDF.iloc[i].Open,3)
                     self.putDataIntoDF(priceAtThatTime,idx,timeframe)
         except IndexError:
             return
@@ -235,7 +226,7 @@ class DataGetter():
         lastprice = df.iloc[0].High
         for time, row in df.iterrows():
             currentprice = row.High
-            if(currentprice/lastprice >5):
+            if(currentprice/lastprice >10):
                 return False
             lastprice = currentprice
         return True
@@ -442,9 +433,8 @@ class DataGetter():
         self.print_summary()
 
     def print_summary(self):
-        self.removedDataAmount = self.scrapper.originalSize - len(self.data) 
         print("----------------------------------------------------------------------------------------")
-        print(f"\ndone,removed {self.removedDataAmount} entries because no stock data can be found by them, or they are overlapps" )
+        print(f"\ndone,removed {self.scrapper.removecount} entries because no stock data can be found by them, or they are overlapps" )
         print("NO stock data can mean multiple things: ticker change, merger, acqusition, going private, or bankruptcy")
         print(f"Had to update the tickers of {self.scrapper.changeTickerCount} companies")
         print("----------------------------------------------------------------------------------------")   

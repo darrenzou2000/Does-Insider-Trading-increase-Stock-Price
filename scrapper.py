@@ -7,7 +7,7 @@ import numpy as np
 import json
 from DataGetter import DataGetter
 from urllib.parse import urlparse,parse_qs
-
+import time
 
 #NOTE: this scrapper is built only for opensider.com
 
@@ -26,6 +26,7 @@ class Scrapper():
         self.description = description
         self.count=0
         self.changeTickerCount =0
+        self.removecount = 0
         #if the site is scrapped already, no need to waste time doing it again
         if(self.alreadyscrapped(description)):
             self.data = pd.read_csv(csvFilePath)
@@ -66,10 +67,14 @@ class Scrapper():
         self.data = self.data[self.data["Ticker"]!= "" ]
         self.data = self.data[self.data["Ticker"]!= ".." ]
         self.data = self.data[self.data["Ticker"]!= "Na" ]
-        #sort by trade date instead of filing date cus some companies file 10 years after (look at you OSG)
-        self.data = self.data.sort_values("Filing_Date",ascending=False)
+        self.data = self.data.sort_values("Trade_Date",ascending=False)
+        #remove adjcent duplicate tickers
         print(f"Done scrapping, found: {self.size()} entries")
-        self.data.to_csv(csvFilePath) 
+        self.data = self.data.loc[self.data['Ticker'] != self.data['Ticker'].shift()]
+        self.data = self.data.sort_values("Filing_Date",ascending=False)
+        print(f"Removed adjcent tickers because same stock brought same day shouldnt be counted, total size is now {self.size()}")
+        time.sleep(1)
+        self.to_csv()
         #adding the data to scrapped so that it will show up in the main menu  
         self.addToScrapped()
         #after scrapping data, fill in the stock price after timeframe(2m,1m,2m ...etc)
@@ -173,7 +178,7 @@ class Scrapper():
             Trade_Type =column[7].get_text()
             insiderData['Trade_Type'].append(Trade_Type)
 
-            #If I cannot find the price on this stock at trade date adjsuted for splits and everything, its not going into the final result
+            #If I cannot find the price on this stock at trade date adjusted for splits and everything, its not going into the final result
             # Price =self.toFloat(column[8].get_text()) 
             insiderData['Price'].append(0.0)
 
@@ -224,6 +229,7 @@ class Scrapper():
             if description == entry["description"]:
                 self.originalSize = entry["count"]
                 self.changeTickerCount=entry["changeTickerCount"]
+                self.removecount = entry["removeCount"]
                 return True
         return False
 
@@ -245,18 +251,20 @@ class Scrapper():
     def addToScrapped(self)->None:
         f = open("alreadyscrapped.json")
         scrapped = json.load(f)
-        data = {"url":self.url,"description":self.description,"filePath":self.csvFilePath,"count":self.originalSize,"changeTickerCount":0}
+        data = {"url":self.url,"description":self.description,"filePath":self.csvFilePath,"count":self.originalSize,"changeTickerCount":0,"removeCount":0}
         scrapped["Scrapped"].append(data)
         with open("alreadyscrapped.json","w") as f:
             json.dump(scrapped,f)
         f.close()
 
+    #after scrapping, add the remove count to the file
     def updateScrapped(self):
         f = open("alreadyscrapped.json")
         scrapped = json.load(f)
         for item in scrapped["Scrapped"]:
             if(item["url"]==self.url):
                 item["changeTickerCount"] += self.changeTickerCount
+                item["removeCount"]+= self.removecount
                 break
         with open("alreadyscrapped.json","w") as f:
             json.dump(scrapped,f)
