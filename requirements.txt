@@ -5,3 +5,4 @@ pandas==1.3.4
 requests==2.26.0
 yfinance==0.1.64
 pandas_datareader
+python-dotenv
