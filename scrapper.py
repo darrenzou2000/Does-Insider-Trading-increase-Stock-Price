@@ -3,7 +3,6 @@ from pandas.io.parsers import read_csv
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
-import numpy as np
 import json
 from DataGetter import DataGetter
 from urllib.parse import urlparse,parse_qs
@@ -11,15 +10,30 @@ import time
 
 #NOTE: this scrapper is built only for opensider.com
 
-#functions: init: takes the url of the open insider page that u are tyring to scrape from, outputs a csv file of the table shown.
-# example: url: http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=365&tdr=&fdlyl=&fdlyh=&daysago=14&xp=1&vl=&vh=&ocl=5&och=&sic1=-1&sicl=100&sich=9999&isceo=1&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=1000&page=1
-#          csvFilePath: CEO.csv 
-#          description: "this tracks the purchases of CEOS of a company that have a % change in ownership of 5% or more in the last year 
-#                        and more than 14 days ago puts the output into a csv file named CEO.csv"
+
+
+"""
+How this scrapper works:
+A scrapper is a tool that can be used to "scrape a website" or take the html of a website and along with that, any data that can be attained. 
+For example On open insider.com, all of the data regarding the insider trading is in a table and if we can parse that table using a library using beauitful soup, 
+we can then extract that data.
+
+This scrapper have 2 portions:
+1: scrap the data from openinsider.com
+2: generate a pandas dataframe to hold the scrapped data and more data columns for stock price after the stock was brought.
+"""
+
 
 class Scrapper():
-    data = pd.DataFrame()
+
     def __init__(self,url:str,csvFilePath:str,description:str) -> None:
+        """This function starts the scrapping process and sets the default data
+
+        Args:
+            url (str): url of the open insider website with the filters.
+            csvFilePath (str): the filepath that the data is stored, inside the /data folder
+            description (str): a small description for the url, such as "CEO purchases from 2011 to 2022"
+        """
         print("Scrapping Openinsider.com... please wait a few seconds")
         self.url = url
         self.csvFilePath = csvFilePath

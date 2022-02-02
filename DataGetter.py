@@ -11,6 +11,8 @@ import yfinance as yf
 import warnings
 import threading
 import re
+from dotenv import load_dotenv
+load_dotenv()
 
 warnings.filterwarnings("ignore")
 class DataGetter():
@@ -441,11 +443,11 @@ class DataGetter():
         
 
     def getApiKey(self):
-        try:
-            key_file = "key/alpaca_keys.txt"
-            with open(key_file,"r") as f:
-                    line= f.read().strip().split(" ")
-                    API_KEY,SECRET_KEY,END_POINT=line 
-            return {"PUBLIC_KEY":API_KEY,"SECRET_KEY":SECRET_KEY,"END_POINT":END_POINT}
-        except:
-            return {}
+        PUBLIC_KEY=os.getenv("ALPACA_PUBLIC_KEY")
+        SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
+        ENDPOINT=os.getenv("ALPACA_ENDPOINT")
+        if(len(PUBLIC_KEY)==0):
+            print("you need to set up the ALPACA keys in .env file, please follow the .env.example file for more guidence")
+            quit()
+        return {"PUBLIC_KEY":PUBLIC_KEY,"SECRET_KEY":SECRET_KEY,"END_POINT":ENDPOINT}
+    

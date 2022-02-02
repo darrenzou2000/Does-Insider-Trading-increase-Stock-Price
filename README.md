@@ -53,30 +53,35 @@ DESCRIPTION: CEO purchase from 2011 ownchange>5%
 -------------------------------------------------
 ```
 
+PYTHON VERSION USED: 3.8.10
 
-To Use it:
-1:Install dependencies
+TO USE IT:
+
+1: Install anaconda, https://www.anaconda.com/
+
+2: open a powershell if you are on windows or just terminal if you are on mac/linux
+
+3: verify that conda is install by typing "conda" in terminal
+
+4: type this command 
 ```
-pip3 install -r requirements.txt
-```
-
-2: Go to openinsider.com and select the filters you want, set the Max results to 1000 and press search
-   Verify the data that the website give you, if it looks good, copy the url
-
-
-3: run program
-
-```
-python3 main.py
+conda create --name insider python=3.8.10
 ```
 
-4: FOLLOW DIRECTIONS. The output should be in the data folder
+5: then activate the enviornment you just created:
+```
+conda activate insider
+```
 
+6: install all dependencies
+```
+pip install -r requirements.txt 
+```
 
-
-
-
-
+7: run the program: 
+```
+python main.py
+```
 
 
 
