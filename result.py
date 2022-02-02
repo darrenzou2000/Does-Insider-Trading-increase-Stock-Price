@@ -7,10 +7,18 @@ class Result():
         self.timeframe = TimeFrame()
         self.tf = self.timeframe.timeframe
         self.tfp = self.timeframe.timeframepecent
+        
     def cleanup(self):
-        # self.df = self.df.dropna(axis=0,subset=["Price"])
         self.df = self.df[self.df["Price"]!=0]
         self.df = self.df.loc[self.df["2w"]!=0]
+        return self.df
+
+    def generalResult(self,df = None):
+        if( not df):
+            df = self.df
+        self.getPositive()    
+        self.getAVG()
+        self.getactive()
     #gets average of every timeframe 
     def getAVG(self,df=None):
         if(df==None):
@@ -19,12 +27,12 @@ class Result():
         for time in self.tf:
             try:
                 # gets all entry thats not empty for that time (eg: 6 dollars after 4 month)
-                drop0=df.sort_values(by=[f'{time}%'],ascending=False)
+                drop0=df[df[f'{time}%']!=0]
                 average = drop0.mean(axis=0,numeric_only=True)
                 result[f"{time}"]= [round(average[f'{time}%'],2),len(drop0)]
             except:
                 continue
-        print("\n-----------------------------------------------\nTHIS IS AVERAGE  ")
+        print("\n--------------result.---------------------------------\nTHIS IS AVERAGE  ")
         for time,data in result.items():
             print(f"For {time}, the average return is {data[0]}%, count: {data[1]}")
         return result

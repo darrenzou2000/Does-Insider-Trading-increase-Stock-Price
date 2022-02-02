@@ -10,7 +10,7 @@ import datetime
 from urllib.parse import urlparse, parse_qs
 import pandas_datareader as pdr
 
-from scrapper import Scrapper,DataGetter
+from scrapper import Scrapper,DataGetter, TimeFrame
 
 def undone():
     filePath = "data/VP50%last4year.csv"
@@ -175,5 +175,4 @@ def testonerow():
     df = pd.read_csv("test.csv")
     getter = DataGetter()
     getter.testOneRow(df)
-df = checkdatayf("2014-09-26","MMTC").head(52)
-print(df)
+checkdata('2015-07-27,BHBK')
