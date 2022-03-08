@@ -79,7 +79,7 @@ class DataGetter():
         if(startDate>twoweeksago):
             twoweeksago=startDate 
         #this is now weekly data, the timeframe is 5day
-        alpacaDF = self.api.get_bars(tickers,timeframe="5Day",start=startDate, end=twoweeksago,adjustment="all").df
+        alpacaDF = self.api.get_bars(tickers,timeframe="1Week",start=startDate, end=twoweeksago,adjustment="all").df
         for row in rowGroup:
             idx = row.idx
             if(self.isrowDone(idx)):
@@ -339,9 +339,7 @@ class DataGetter():
         if self.data.iloc[0].done==True:
             return
         print("Checking if any company changed their ticker...")
-        key = self.getApiKey()
-        alpaca_api = tradeapi.REST(key["PUBLIC_KEY"],key["SECRET_KEY"],key["END_POINT"])
-        assets = alpaca_api.list_assets(status="active")
+        assets = self.api.list_assets(status="active")
         #get company and corresponding symbol
         companyandsymbol = self.getCompanyandSymbol(assets)
         for _,row in self.data.iterrows():
@@ -392,7 +390,7 @@ class DataGetter():
     given the companyname, this should return (ED,NYSE)
     :"""
 
-    def findClosestMatch(self,companies:list,companyname) -> tuple:
+    def findClosestMatch(self,companies:list,companyname:str) -> tuple:
         if len(companies)==1:
             if companyname[-5:] not in list(companies[0].keys())[0]:
                 return (None,None)
@@ -442,12 +440,20 @@ class DataGetter():
         print("----------------------------------------------------------------------------------------")   
         
 
+    #gets api keys if they exist, set them up if they dont
     def getApiKey(self):
-        PUBLIC_KEY=os.getenv("ALPACA_PUBLIC_KEY")
+        PUBLIC_KEY= os.getenv("ALPACA_PUBLIC_KEY")
         SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
         ENDPOINT=os.getenv("ALPACA_ENDPOINT")
-        if(len(PUBLIC_KEY)==0):
-            print("you need to set up the ALPACA keys in .env file, please follow the .env.example file for more guidence")
-            quit()
+        if(not PUBLIC_KEY):
+            ENDPOINT= "https://paper-api.alpaca.markets"
+            print("Looks like you dont have an alpaca api key yet, its ok, just follow this doc: \n https://docs.google.com/document/d/1wdcO4dxtI0B5Ki6PVoLiNI4UsVR7oe1t_AtQOdYHV0A/edit?usp=sharing  \n this process probably only takes a minute")
+            with open(".env",'w') as f:
+                f.write(f"ALPACA_ENDPOINT= {ENDPOINT} \n")
+                PUBLIC_KEY = input("the API Key ID: ")
+                SECRET_KEY = input("the Secret Key: ")
+                f.write(f"ALPACA_SECRET_KEY= {SECRET_KEY} \n")
+                f.write(f"ALPACA_PUBLIC_KEY= {PUBLIC_KEY}")
+                f.close()
         return {"PUBLIC_KEY":PUBLIC_KEY,"SECRET_KEY":SECRET_KEY,"END_POINT":ENDPOINT}
     
