@@ -49,8 +49,9 @@ class Scrapper():
             getter.update(self)
             return
 
-        if self.isgrouped(url):
-            print("detected that this is a cluster, scrapping could take up to a minute")
+        #TODO: refactor insiderdata into self.insiderData
+        if self.isCluster(url):
+            print("detected that this is a cluster query, scrapping could take up to a minute")
             insiderData = {'idx':[],"Option":[],'Filing_Date':[], 'Trade_Date':[], 'Ticker':[], 'Company_Name':[], 'Industry':[], 'Insider_Amount':[], 'Trade_Type':[], 'Price':[], 'Qty':[], 'Owned':[], 'ΔOwn':[], 'Value':[]}
             insiderData = self.turnGroupedDataIntoDict(insiderData,url)
         #insider data contains all the major fields, this will be converted into dataframe and eventurally csv
@@ -96,9 +97,18 @@ class Scrapper():
         getter.update(self)
     def size(self):
         return len(self.data)
-    #params:
-    #  url: Url of open insider website
-    def turnDataintodict(self,insiderData,url) ->dict:
+
+    def turnDataintodict(self,insiderData:dict,url:str) ->dict:
+        """This is the scrapping part where the url is scrapped and insiderData is populated 
+
+        Args:
+            insiderData (dict): dictionary of the columns for the insider data such as name,ticker, etc
+            url (str): the Url to scrape from
+
+        Returns:
+            dict: _description_
+        """
+        #TODO: add validation to make sure that the url is a openinsider url
         result = requests.get(url)
         src = result.content
         soup = BeautifulSoup(src,"lxml")
@@ -115,16 +125,22 @@ class Scrapper():
 
             Filing_Date = self.getchildData(column[1],"div a").split(" ")[0]
             insiderData["Filing_Date"].append(Filing_Date)
+
             Trade_Date = self.getchildData(column[2],"div") 
             insiderData["Trade_Date"].append(Trade_Date)
+
             Ticker = self.getchildData(column[3],"b a") 
             insiderData['Ticker'].append(Ticker)
+
             Company_Name = self.getchildData(column[4],"a").split("/")[0]
             insiderData['Company_Name'].append(Company_Name)
+
             Insider_Name = self.getchildData(column[5],"a") 
             insiderData['Insider_Name'].append(Insider_Name)
+
             Title = column[6].get_text()
             insiderData['Title'].append(Title)
+
             Trade_Type =column[7].get_text()
             insiderData['Trade_Type'].append(Trade_Type)
 
@@ -132,12 +148,16 @@ class Scrapper():
 
             Qty = self.toFloat(column[9].get_text())
             insiderData['Qty'].append(Qty)
+
             Owned =self.toFloat(column[10].get_text()) 
             insiderData['Owned'].append(Owned)
+
             OwnChange =self.toFloat(column[11].get_text())
             insiderData['ΔOwn'].append(OwnChange)
+
             Value = self.toFloat(column[12].get_text())
             insiderData['Value'].append(Value)
+
         #if the number if rows is 1000, then there might be more data on the next page, so we go to the next page
         if(len(rows)==1000):
             #pagenumber is found at the end of the url
@@ -147,12 +167,12 @@ class Scrapper():
                 return insiderData
             url = url.split("page=")[0] + "page=" + str(page+1)
             print("currently scanning page:",page, "entries gotten so far:",(page)*1000)
-            #recursion until all the pages are done
+            #recursively scrape until all the pages are done
             insiderData = self.turnDataintodict(insiderData,url)
         return insiderData
     
-    # D means options trade
-    def isOptionsTrade(self,type):
+    # D means "derivative" aka options trade
+    def isOptionsTrade(self,type)->bool:
         return "D" in type
 
     #same function as turnDataintodict, but it deals with cluster instead of indivisual
@@ -223,13 +243,14 @@ class Scrapper():
 
 
     #this function checks if the url given is for grouped or cluster trading  rather than indivisual trading
-    def isgrouped(self,url)->bool:
+    def isCluster(self,url)->bool:
         o = urlparse(url)
         query = parse_qs(o.query)
         return query["grp"][0]=="2"
 
     def __repr__(self):
         return "-------------------------------------------------------\nDESCRIPTION: "+ self.description+ "\n found: "+ str(len(self.data))+ " entries"+"\n Located at:"+self.csvFilePath+"\n-------------------------------------------------"
+    
     def get_data(self)->pd.DataFrame:
         self.data = read_csv(self.csvFilePath)
         return self.data
@@ -251,6 +272,7 @@ class Scrapper():
     def toFloat(self,input):
         if input == "New":
             return "New"
+        #TODO: refactor to use regex
         removelist = ["+","%",",", "$",">"]
         for i in removelist:
             input = input.replace(i,"")
@@ -293,6 +315,8 @@ class Scrapper():
         for child in path:
             childNode= data.find(child)
         return childNode.get_text()
+
+
 #this is a helper class that holds all the time frames so I dont have to rewrite them in every class
 class TimeFrame:
     def __init__(self) -> None:

@@ -17,18 +17,36 @@ load_dotenv()
 warnings.filterwarnings("ignore")
 class DataGetter():
     def __init__(self) -> None:
+        #the timeframes needed for the stock such as ["1m","2m","3m" etc]
         self.timeframe = Scrapper.TimeFrame()
+
+        #api keys for alpaca
         self.key = self.getApiKey()
         self.api= tradeapi.REST(self.key["PUBLIC_KEY"],self.key["SECRET_KEY"],self.key["END_POINT"])
-        #since I can query multiple data from YF, I need to keep a list just for YF
+        #since I can't query multiple data from YF, I need to keep a list just for YF
         self.yfList = []
-        self.yfcount=0
+
+        #the treads used to speed up data gathering from Yahoo finance
         self.Threads = []
+
+        #number of rows processed- for the user to see
         self.count =0
+
+        #used to standardize company names 
         self.regex = re.compile('[^a-z]')
         return
 
-    def update(self,scrapper):
+    def update(self,scrapper:Scrapper)-> Scrapper:
+        """
+            This function might be overwelming but it does a lot of things:
+            1: check if the data is already done(i.e no data need to be updated and the result can be displayed immediately)
+            2: check with current active companies and see if any of them have a ticker change
+            3: groups rows togather to get stock data from Alpaca api 
+            4: after all the data is collected, update percent change
+            5: clean up data and get rid of empty rows, then save to csv file
+        Args:
+            scrapper (Scrapper): The scrapper from scrapper.py that contains all the insider trading from OpenInsider.com
+        """
         self.scrapper = scrapper
         self.data = scrapper.get_data()
         dfSize = len(self.data)
@@ -52,8 +70,8 @@ class DataGetter():
             if(len(rowGroup)<20 and (dfSize-self.count)>19): 
                 continue
             
-            tickers= self.getTickersFromGroup(rowGroup)
-            self.getPriceAtTimeBrought(rowGroup,tickers) 
+            tickers= self.getTickersFromRowGroup(rowGroup)
+            self.getBroughtPriceForGroup(rowGroup,tickers) 
             self.getWeeklyDataFromRowGroup(rowGroup,tickers)
             rowGroup.clear() 
             self.to_csv()
@@ -62,15 +80,46 @@ class DataGetter():
             self.queueStockForYF(doTheRest=True)
         for i in self.Threads:
             i.join()
-        self.updatepercentChange(self.data)  
+        self.updatepercentChange()  
         self.cleanup()
         self.to_csv()
         print("done, all data is updated to",scrapper.csvFilePath)
         return scrapper
 
     def to_csv(self):
+        """Save data to the csv file that was assigned to the scrapper 
+        """
         self.scrapper.data = self.data
         self.scrapper.to_csv()
+
+    def getCorrectStockTicker(self)->None:
+        """to adjust for some ticker changes, I will look through all stocks in NYSE and Nasdaq 
+        and see if the company have a different ticker 
+
+        TODO: This function can still be massivly improved, such as including more exchanges
+        """
+
+        #if the first row is done then it means that all the companies already have the correct stock ticker
+        if self.data.iloc[0].done==True:
+            return
+        print("Checking if any company changed their ticker...")
+        assets = self.api.list_assets(status="active")
+        #get company and corresponding symbol
+        companyandsymbol = self.getCompanyandSymbol(assets)
+        for _,row in self.data.iterrows():
+                ticker = row.Ticker
+                idx = row.idx
+                companyname = self.stripNonAlpabet(row.Company_Name.lower()) 
+                if(companyname[0:10] in companyandsymbol):
+                    self.data.loc[self.data.idx==idx,"active"]=True
+                    newticker,exchange = self.findClosestMatch(companyandsymbol[companyname[0:10]],companyname)
+                    self.data.loc[self.data.idx==idx,"exchange"]=exchange  
+                    if(ticker != newticker and newticker!=None):
+                        print(f"Company {row.Company_Name}'s symbol is {newticker},instead of {ticker}")
+                        self.data.loc[self.data.idx==idx,"Ticker"]=newticker   
+                        self.scrapper.changeTickerCount+=1  
+        #I spent a painful weeks on this, you better look at what companies changed their tickers.
+        time.sleep(3)     
 
     def getWeeklyDataFromRowGroup(self,rowGroup,tickers):
         lastrow = rowGroup[-1]
@@ -96,16 +145,25 @@ class DataGetter():
                 print(f"Error {e} at index {idx} FOR getWeeklyDataFromRowGroup type { type(e)}")
                 self.data.loc[self.data.idx==idx,"skip"]=True
 
+
+    #outputs the data fro a single row. For testing purposes
     def testOneRow(self,df):
         row = df.iloc[0]
         tickers = [row.Ticker]
         self.data = df
-        self.getPriceAtTimeBrought([row],tickers) 
+        self.getBroughtPriceForGroup([row],tickers) 
         self.getWeeklyDataFromRowGroup([row],tickers)
         self.queueStockForYF(doTheRest=True)
         self.data.to_csv("test.csv")
 
-    def getWeeklyDataFromAlpacaDF(self,weeklyDF,row):
+    def getWeeklyDataFromAlpacaDF(self,weeklyDF:pd.DataFrame,row:pd.Series):
+        """The alpaca DF have data from 20 companies, the row is one of the company. 
+        This function extracts data from the DF and puts it into the row. 
+
+        Args:
+            weeklyDF (pd.DataFrame): data frame from the Alpaca Market Api, and extract data from it to put into database 
+            row (pd.Series): The row of self.data that the data from weeklyDF is extracted to
+        """
         idx = row.idx
         filing_date = row.Filing_Date
         offset = 0
@@ -127,12 +185,22 @@ class DataGetter():
             for timeframe,numofweek in timeframeAndweeknum.items():
                 priceAtTimeFrame = weeklyDF.iloc[int(numofweek)+offset].open
                 self.putDataIntoDF(priceAtTimeFrame,idx,timeframe)
+        #index error means that theres no data at the given timeframe, E.G. the 1 year data is not avaliable
         except IndexError:
             return
         except Exception as e:
             print("error:",e , "at index",idx,"For getWeeklyDataFromAlpacaDF")   
-    #this function takes the list of rows and their tickers, then trys to get data from the time brought
-    def getPriceAtTimeBrought(self,rowGroup,tickers):
+
+    def getBroughtPriceForGroup(self,rowGroup:pd.DataFrame,tickers:list):
+        """I need to figure out the price when the stock is traded by the insider because multiple things can happen to a stock
+          for example: stock splits, options, etc
+          So I will extract the price when brought first. 
+          The reason why I cant do it togather is because the weekly datas always start on mondays. 
+
+        Args:
+            rowGroup (pd.DataFrame): A group of about 20 companies because alpaca api allows group queries
+            tickers (list[str]): the list of tickers for those 20 companies
+        """
         lastrow = rowGroup[-1]
         startDate,endDate=self.getStartAndEndDate(lastrow.Filing_Date)
         alpacaDF = self.api.get_bars(tickers,timeframe="1Day",start=startDate, end=endDate,adjustment="all").df
@@ -155,49 +223,58 @@ class DataGetter():
                 continue
             else:
                 indivisualDF = indivisualDF[indivisualDF["volume"]!=0]
-                priceWhenBrought = self.getTradePriceWhenBrought(filing_date,indivisualDF,row)
-                if(priceWhenBrought==None):
-                    print(f"send {ticker} to YF price brougth cant be found on alpaca")
-                    self.queueStockForYF(row)
-                    continue
-                print(f"Price of {ticker} when brought is {priceWhenBrought}, Currently {self.count} out of {len(self.data)}")
-                self.data.loc[self.data.idx==idx,"Price"]=priceWhenBrought
+                self.setBroughtPrice(filing_date,indivisualDF,row)
+
 
     #this puts the tickers in a list for YF to query all at once
     def queueStockForYF(self,row=pd.Series([]),doTheRest = False):
+        """Alpaca often dont have data for a specific ticker, so Yahoo fianace is my backup since it have way more data,
+        it doesnt allow group queries so using it as the sole source is really slow. 
+        I use threading to bypass the speed limit, but still cap the per instance to 20 so I dont get blacklisted from yahoo servers.
+
+        Args:
+            row (pd.Series([]), optional): The row that alpaca dont have data on. Defaults to pd.Series([]).
+            doTheRest (bool, optional): At the end of the program, do the rest that are queued. Defaults to False.
+        """
         if(not row.empty):
-            self.yfcount+=1
             self.yfList.append(row)
             idx = row.idx
             #mark it as skip so alpaca dont look for it
             self.data.loc[self.data.idx==idx,"skip"]=True
         if(len(self.yfList)==20 or doTheRest):
+            rowGroup= self.yfList.copy()
+            #clear out yfList after copying it over so that more data can be queued
+            self.yfList.clear() 
             #use threading to get yf data cus it takes FOREVER
-            thread = threading.Thread(target=self.getweeklyDataFromYF) 
+            thread = threading.Thread(target=self.getweeklyDataFromYF,args=[rowGroup]) 
             thread.start()
             self.Threads.append(thread)
 
-    #apprently "Perma-fix" and "Perma fix" are not the same thing!
-    def stripNonAlpabet(self,string):
-        #regex the string to only lowercase a-z
-        return self.regex.sub("",string)
+    def getweeklyDataFromYF(self,rowGroup:list) -> None:
+        
+        """Takes all the queued companies from yfList and get data from each of them, then parse them
+            Args:
+            rowGroup (list[pd.Series]): List of rows of companies that are queued to get data from YF
+        """
 
-    def getweeklyDataFromYF(self) -> None:
-        #start date is the trade date of the last row in this group because that is the earliest
-            rowGroup= self.yfList.copy()
-            self.yfList.clear() 
-            # weeklystockDataForAllStockInList.index = pd.to_datetime(weeklystockDataForAllStockInList.index, format = '%Y-%m-%d').strftime('%Y-%m-%d')
-            for row in rowGroup:
-                company = yf.Ticker(str(row.Ticker)) 
-                filingDate = row.Filing_Date
-                hist = company.history(period="3y",interval="1wk",start = filingDate,back_adjust=True)
-                self.inputYFDataIntoDF(hist,row)
+        for row in rowGroup:
+            company = yf.Ticker(str(row.Ticker)) 
+            filingDate = row.Filing_Date
+            hist = company.history(period="3y",interval="1wk",start = filingDate,back_adjust=True)
+            self.inputYFDataIntoDF(hist,row)
             
     
-    def isrowDone(self,idx):
+    def isrowDone(self,idx:int) -> bool:
         return self.data.loc[self.data.idx==idx].iloc[0].done or self.data.loc[self.data.idx==idx].iloc[0].skip 
 
-    def inputYFDataIntoDF(self,indivisualDF,row):
+    def inputYFDataIntoDF(self,indivisualDF:pd.DataFrame,row:pd.Series) -> None:
+        """Take the stock data from YF's dataframe and puts it into the row
+
+        Args:
+            indivisualDF (pd.DataFrame): stock data for a single company 
+            row (pd.Series): the row that needs the data
+        """
+       
         idx = row.idx
         #yahoo finance have a data limit so if that limit is hit then all the incomming df would be empty. so if the limit is hit
         # then the program should not mark that row as done 
@@ -224,7 +301,18 @@ class DataGetter():
     
     #sometimes a pre ipo price was given like for ENCR on 2015-05-08, where the price went from 0.15 to 6 overnight, but its not even publicly tradable yet
     #this will filter that out
-    def validateYFdf(self,df):
+    def validateYFdf(self,df:pd.DataFrame)->bool:
+        """Sometimes incorrect data can be given, or data from a company that the ticker previously belonged to is given
+        To filter those out, it would be safer to throw out data that is suspicious.
+
+        This function needs further exploring and is currently a bandaid solution. 
+
+        Args:
+            df (pd.DataFrame): stock data of a single company 
+
+        Returns:
+            bool: Whether or not there is a HUGE(10x) jump in price from the week to week of a stock
+        """
         lastprice = df.iloc[0].High
         for time, row in df.iterrows():
             currentprice = row.High
@@ -232,16 +320,28 @@ class DataGetter():
                 return False
             lastprice = currentprice
         return True
-    def getTradePriceWhenBrought(self,filing_date,dailyDF,row) ->float:
+    
+    #TODO: account of stocks that filed on weekends 
+    def setBroughtPrice(self,filing_date:str,dailyDF:pd.DataFrame,row:pd.Series) ->None:
+        """Sets the price when traded by insider
+
+        This function finds the date that the filing was announced and fill the price when filed for that row
+
+        Args:
+            filing_date (str): the date that the insider trading was made public
+            dailyDF (pd.DataFrame): daily stock price of a single company
+            row (pd.Series): the company's data 
+
+
+        """
         idx = row.idx
         ticker = row.Ticker
         #checks if the stock had undergone a period of 0 volume, which will disqualfy a stock
         if(not self.validateAlapcaDF(dailyDF)):
             self.queueStockForYF(row)
-            return None
         for timestamp,entry in dailyDF.iterrows():
             if filing_date == timestamp:
-                return entry.open
+                self.data.loc[self.data.idx==idx,"Price"]=entry["open"]
         #if the trade date is not in the df, then this stock's trade date is outside of two month period, so I will mark it for indivisual search.
         self.queueStockForYF(row)
 
@@ -251,7 +351,17 @@ class DataGetter():
         print("Expected wait time: ", round(len(self.data)/3/60,2), "Minutes\n")
         print(message)
 
-    def getTickersFromGroup(self,group,asOneString=True)->list:
+    def getTickersFromRowGroup(self,group:pd.DataFrame,asOneString:bool=True)->list:
+        """Alpaca accepts the tickers in ["AAPL,MSFT,FB"] instead of the regular way, but this function can return both
+            with the asOneString param
+
+        Args:
+            group (pd.DataFrame): a group of companies from self.data
+            asOneString (bool, optional): whether to return tickers as one string inisde a array or as separate elements. Defaults to True.
+
+        Returns:
+            list: returns either ["msft,aapl"] or ["MSFT","AAPL"] base on asOneString
+        """
         if(asOneString):
             result= ""
             for i in group:
@@ -271,8 +381,17 @@ class DataGetter():
         elif platform == "win32":
             os.system("cls")
 
-    #yahoo finanace doesnt give exact date so I have to check if it is within a range of at least 5 days. if yes then the info is good to use
-    def within14days(self,givendate,tradeDate):
+    def within14days(self,givendate:str,tradeDate:str) -> bool:
+        """On a dataset, when a company transfers its ticekr to another company, there is a minimum two weeks window 
+        where there is no activity, this function detects if any of the last avaliable data and current data have a 14 day skip.
+
+        Args:
+            givendate (str): the start date
+            tradeDate (str): the other date
+
+        Returns:
+            bool: true if the two dates are within 14 days inclusive, else false 
+        """
         givendate = str(givendate).split("T")[0]
         #modify it so taht alpaca df can use it too
         givendate = str(givendate).split(" ")[0]
@@ -285,14 +404,28 @@ class DataGetter():
         margin = datetime.timedelta(days = 14)
         return givendate - margin <= tradeDate <= givendate + margin
 
-    #can be refactored to be shorter but this is more readable
-    def putDataIntoDF(self,value,idx,timeframe):
+    def putDataIntoDF(self,value:float,idx:str,timeframe:str):
+        """ puts a price value into the result DF,
+        Args:
+            value (float): the price of the stock at that time
+            idx (str): the idx of the row that this value belong to
+            timeframe (str): this is a column in the Dataframe, eg: 6m, 4m, etc
+        """
         idx = int(idx)
         value = round(value,2)
         #this updates the price at that time frame, ie: $65 two weeks later
         self.data.loc[self.data.idx==idx,timeframe] = value
 
-    def percentChange(self,oldprice,newprice):
+    def percentChange(self,oldprice:float,newprice:float):
+        """calculates percent change
+
+        Args:
+            oldprice (_type_): the original price
+            newprice (_type_): the new price
+
+        Returns:
+            _type_: percent change, eg 10 -> 20 is 100% change
+        """
         result =0
         if oldprice == newprice:
             return 0
@@ -302,24 +435,31 @@ class DataGetter():
             result = -(oldprice-newprice)/oldprice
         return round(result*100,2)
 
-    def updatepercentChange(self,df):
-        for i, row in df.iterrows():
-            oldprice = df.at[i,"Price"]
+    def updatepercentChange(self):
+        """after getting all the stock data, the percent changes are filled in from the original
+        """
+        for i, row in self.data.iterrows():
+            oldprice = self.data.at[i,"Price"]
             #time frame is ["2w","1m"...]
             for time in self.timeframe.timeframe:
                 newprice = row[time]
                 if(newprice!=0):
-                    df.at[i,f"{time}%"] = self.percentChange(oldprice,newprice)
+                    self.data.at[i,f"{time}%"] = self.percentChange(oldprice,newprice)
         print("done updating percent change")       
-        return df
     
-    #fixing annoying bugs for alpaca api, such as having a stock data before stock even ipos, but its always followed by volumn=0 for a few weeks
-    #also when ticker changes companies, there will be gaps between 
-    def validateAlapcaDF(self,df):
+     
+    def validateAlapcaDF(self,df:pd.DataFrame)->bool:
+        """
+        fixing annoying bugs for alpaca api, such as having a stock data before stock even ipos, but its always followed by volumn=0 for a few weeks
+        also when ticker changes companies, there will be gaps between
+        Args:
+            df (pd.DataFrame): the stock data for a single comany
+        Returns:
+            bool: true if the data is valid, false if not
+        """
         if len(df)==0:
             return False
         consecutive =0
-        #sometimes the stock have off days with 0 volume, but if its not consequtive them its fine
         last_date = df.index.values[0]
         for trade_date,row in df.iterrows():
             if(not self.within14days(trade_date,last_date)):
@@ -330,31 +470,10 @@ class DataGetter():
                     print(df.loc[df.volume==0])
                     return False
             else:
-               consecutive-=1
+               consecutive=0
             last_date = trade_date
         return True
-    #to adjust for some ticker changes, I will look through all assets in NYSE and Nasdaq and see if the company have a different ticker 
-    def getCorrectStockTicker(self):
-        #if the first row is done then it means that all the companies already have the correct stock ticker
-        if self.data.iloc[0].done==True:
-            return
-        print("Checking if any company changed their ticker...")
-        assets = self.api.list_assets(status="active")
-        #get company and corresponding symbol
-        companyandsymbol = self.getCompanyandSymbol(assets)
-        for _,row in self.data.iterrows():
-                ticker = row.Ticker
-                idx = row.idx
-                companyname = self.stripNonAlpabet(row.Company_Name.lower()) 
-                if(companyname[0:10] in companyandsymbol):
-                    self.data.loc[self.data.idx==idx,"active"]=True
-                    newticker,exchange = self.findClosestMatch(companyandsymbol[companyname[0:10]],companyname)
-                    self.data.loc[self.data.idx==idx,"exchange"]=exchange  
-                    if(ticker != newticker and newticker!=None):
-                        print(f"Company {row.Company_Name}'s symbol is {newticker},instead of {ticker}")
-                        self.data.loc[self.data.idx==idx,"Ticker"]=newticker   
-                        self.scrapper.changeTickerCount+=1  
-        time.sleep(3)     
+
     def getStartAndEndDate(self,tradeDate):
         y,m,d = map(int,tradeDate.split("-"))
         startTradeDate = datetime.date(y,m,d)-datetime.timedelta(days=4) 
@@ -410,7 +529,12 @@ class DataGetter():
         if companyname[-5:] not in resultname:
             return (None,None)
         return result
-            
+
+    #apprently "Perma-fix" and "Perma fix" are not the same thing!
+    def stripNonAlpabet(self,string):
+        #regex the string to only lowercase a-z
+        return self.regex.sub("",string)
+        
     def getLongestSimilarInitial(self,originalstr,comparestr):
         count =0
         for i,char in enumerate(comparestr):

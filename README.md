@@ -1,15 +1,9 @@
 Project dev: Darren Zou 
 Started at 10/18/2021
 
-
-First of all watch this video, it tells you everything:
-(video link for when I acutally does it)
-
-
 What is this project?
 
-Im sick and tired of losing money on Robinhood like an absolute idiot, so I wanted to see whether or not Insider trading will yeild me better results
-I scrape data from OpenInsider.com and using Yahoo Finance, find the results of insider trading and it mostly been positive. 
+I built a webscrapping bot to scrape insider trading from openinsider.com and then get price changes up to two years after they are traded and then display relavent data
 
 Technologies used:
 Language: Python 3.8
@@ -83,6 +77,18 @@ pip install -r requirements.txt
 python main.py
 ```
 
+
+After running it, head to 
+
+http://openinsider.com/
+
+enter in any filter you want 
+
+![image](https://user-images.githubusercontent.com/89553844/157266948-6cf8b55d-0cc7-4adb-9e9b-04cb2055ecb0.png)
+
+NOTE: DO NOT enter a ticker or insider name
+Note: This bot is currently only built to look at purchases only. 
+*Also remember to set the Max results to 1000*
 
 
 
