@@ -18,7 +18,7 @@ class Result():
             df = self.df
         self.getPositive()    
         self.getAVG()
-        self.getactive()
+        self.getActive()
     #gets average of every timeframe 
     def getAVG(self,df=None):
         if(df==None):
@@ -36,7 +36,7 @@ class Result():
         for time,data in result.items():
             print(f"For {time}, the average return is {data[0]}%, count: {data[1]}")
         return result
-    def getactive(self,df=None):
+    def getActive(self,df=None):
         if(df==None):
             df = self.df
         beforesize = len(df)
