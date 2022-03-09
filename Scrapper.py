@@ -371,11 +371,10 @@ class Scrapper():
 class TimeFrame:
 
     def __init__(self) -> None:
-        self.timeframe = [
-            "2w", "1m", "2m", "3m", "4m", "5m", "6m", "7m", "8m", "9m", "10m",
-            "11m", "1yr", "2yr"tickerElement%", "4m%", "5m%", "6m%", "7m%", "8m%",
-            "9m%", "10m%", "11m%", '1yr%', '2yr%'
-        ]
+        self.timeframe = ["2w","1m","2m","3m","4m","5m","6m","7m","8m",
+                        "9m","10m","11m","1yr","2yr"]
+        self.timeframepecent= ['2w%',"1m%","2m%","3m%","4m%","5m%","6m%","7m%",
+                              "8m%","9m%","10m%","11m%", '1yr%', '2yr%']
         # how many days in each time frame
         self.tradedays = [
             10, 21, 42, 63, 84, 105, 126, 147, 168, 189, 210, 231, 252, 504

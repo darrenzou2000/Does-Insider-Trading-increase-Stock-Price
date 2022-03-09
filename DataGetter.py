@@ -58,15 +58,16 @@ class DataGetter():
                                  insider trading from OpenInsider.com
         """
         self.scrapper = scrapper
-        self.data = scrapper.get_data()
+        self.data = scrapper.getData()
         dfSize = len(self.data)
-        # if every ticker is done, then no need to loop
-        if (self.data[self.data.done is False].empty):
+        # if every ticker is done, then no need to loop,
+        #  also note: using "is False" causes a error because numpy bool is not the same as regular python bool
+        if (self.data[self.data.done == False].empty):
             self.print_summary()
             return scrapper
         self.getCorrectStockTicker()
         self.to_csv()
-        self.notdone = self.data[self.data.done is False]
+        self.notdone = self.data[self.data.done == False]
         self.count = len(self.data) - len(self.notdone)
         # grouping the rows into a list so I can query them all at once with one api call
         rowGroup = []
@@ -76,7 +77,7 @@ class DataGetter():
             if (bool(row["done"])):
                 continue
             rowGroup.append(row)
-            # alapca allows multiple tickers be queried at once so I will do one api call every 10 rows
+            # alpaca allows multiple tickers be queried at once so I will do one api call every 10 rows
             if (len(rowGroup) < 20 and (dfSize - self.count) > 19):
                 continue
 
@@ -384,7 +385,7 @@ class DataGetter():
         """
         idx = row.idx
         # checks if the stock had undergone a period of 0 volume, which will disqualfy a stock
-        if (not self.validateAlapcaDF(dailyDF)):
+        if (not self.validateAlpacaDF(dailyDF)):
             self.queueStockForYF(row)
         for timestamp, entry in dailyDF.iterrows():
             if filingDate == timestamp:
@@ -499,7 +500,7 @@ class DataGetter():
                     self.data.at[i, f"{t}%"] = self.percentChange(oldprice, newprice)
         print("done updating percent change")
 
-    def validateAlapcaDF(self, df: pd.DataFrame) -> bool:
+    def validateAlpacaDF(self, df: pd.DataFrame) -> bool:
         """
         fixing annoying bugs for alpaca api, such as having a stock data before stock even ipos, but its always followed by volumn=0 for a few weeks
         also when ticker changes companies, there will be gaps between
@@ -635,7 +636,7 @@ class DataGetter():
 
     # gets api keys if they exist, set them up if they dont
     def getApiKey(self):
-        PUBLIC_KEY = os.getenv("ALPACA_PUBLIC_KEdataY")
+        PUBLIC_KEY = os.getenv("ALPACA_PUBLIC_KEY")
         SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
         ENDPOINT = os.getenv("ALPACA_ENDPOINT")
         if (not PUBLIC_KEY):

@@ -128,10 +128,11 @@ class App():
         desc = obj["description"]
         filePath = obj["filePath"]
         os.remove(filePath)
-        # erase everything in that file
+        #recreates the file
         with open(filePath, 'w') as f:
             f.close()
             pass
+        #update already scrapped
         del self.scrapped["Scrapped"][index]
         with open("alreadyscrapped.json", "w") as f:
             json.dump(self.scrapped, f)

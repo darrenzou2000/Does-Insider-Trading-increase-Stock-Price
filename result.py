@@ -1,5 +1,5 @@
 import pandas as pd
-from scrapper import TimeFrame
+from Scrapper import TimeFrame
 class Result():
     def __init__(self,df) -> None:
         self.df = df
