@@ -87,9 +87,16 @@ enter in any filter you want
 ![image](https://user-images.githubusercontent.com/89553844/157266948-6cf8b55d-0cc7-4adb-9e9b-04cb2055ecb0.png)
 
 NOTE: DO NOT enter a ticker or insider name
+
 Note: This bot is currently only built to look at purchases only. 
+
 *Also remember to set the Max results to 1000*
 
+8: 
+Copy the url and follow the program instructions.
+
+
+Future plans: Add a web interface to make this project more people friendly
 
 
 
